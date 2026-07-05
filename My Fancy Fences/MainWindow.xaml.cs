@@ -26,11 +26,15 @@ public partial class MainWindow : Window
     private const int GwlExStyle = -20;
     private const int WsExToolWindow = 0x00000080;
     private const int WsExNoActivate = 0x08000000;
+    private const int WsPopup = unchecked((int)0x80000000);
+    private const int WsVisible = 0x10000000;
+    private const uint GwHwndPrevious = 3;
     private const uint SwpNoActivate = 0x0010;
     private const uint SwpNoMove = 0x0002;
     private const uint SwpNoSize = 0x0001;
     private const uint WmTrayIcon = 0x8001;
     private const uint WmRightButtonUp = 0x0205;
+    private const uint WmContextMenu = 0x007B;
     private const uint WmNull = 0x0000;
     private const uint NimAdd = 0x00000000;
     private const uint NimDelete = 0x00000002;
@@ -48,6 +52,9 @@ public partial class MainWindow : Window
     private const uint TrayExitCommand = 1;
     private const uint TrayCreatorCommand = 2;
     private const uint TrayAutoStartCommand = 3;
+    private const uint TraySettingsCommand = 4;
+    private const uint TrayWallpapersCommand = 5;
+    private const uint TrayNewPanelCommand = 6;
     private const int WhMouseLowLevel = 14;
     private const int WmLeftButtonDown = 0x0201;
     private const int WmRightButtonDown = 0x0204;
@@ -58,6 +65,9 @@ public partial class MainWindow : Window
     private static readonly Guid TrayIconGuid = new("D84061E2-1F10-4F94-8A7F-A674EAE38E31");
 
     private IntPtr _windowHandle;
+    private IntPtr _trayWindowHandle;
+    private HwndSource? _trayMessageSource;
+    private uint _taskbarCreatedMessage;
     private string _sourceFolder = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
     private bool _hideFolders;
     private Color _backgroundColor = Color.FromRgb(0x0B, 0x0E, 0x12);
@@ -166,7 +176,12 @@ public partial class MainWindow : Window
             {
                 _isApplicationClosing = true;
                 SaveSettings();
+                SystemEvents.PowerModeChanged -= SystemEvents_PowerModeChanged;
                 RemoveTrayIcon();
+                _trayMessageSource?.RemoveHook(WindowMessageHook);
+                _trayMessageSource?.Dispose();
+                _trayMessageSource = null;
+                _trayWindowHandle = IntPtr.Zero;
             }
         };
     }
@@ -239,7 +254,19 @@ public partial class MainWindow : Window
 
         if (_isPrimaryWindow)
         {
-            HwndSource.FromHwnd(handle)?.AddHook(WindowMessageHook);
+            _trayMessageSource = new HwndSource(new HwndSourceParameters("MyFancyFences.TrayWindow")
+            {
+                PositionX = -32000,
+                PositionY = -32000,
+                Width = 1,
+                Height = 1,
+                WindowStyle = WsPopup | WsVisible,
+                ExtendedWindowStyle = WsExToolWindow
+            });
+            _trayMessageSource.AddHook(WindowMessageHook);
+            _trayWindowHandle = _trayMessageSource.Handle;
+            _taskbarCreatedMessage = RegisterWindowMessage("TaskbarCreated");
+            SystemEvents.PowerModeChanged += SystemEvents_PowerModeChanged;
             AddTrayIcon();
         }
     }
@@ -251,13 +278,48 @@ public partial class MainWindow : Window
         IntPtr lParam,
         ref bool handled)
     {
-        if (message == WmTrayIcon && unchecked((uint)lParam.ToInt64()) == WmRightButtonUp)
+        if (_taskbarCreatedMessage != 0 && message == _taskbarCreatedMessage)
+        {
+            _ = RestoreTrayIconAfterShellChangeAsync();
+            return IntPtr.Zero;
+        }
+
+        var trayNotification = unchecked((uint)lParam.ToInt64()) & 0xFFFF;
+        if (message == WmTrayIcon &&
+            (trayNotification == WmRightButtonUp || trayNotification == WmContextMenu))
         {
             ShowTrayMenu();
             handled = true;
         }
 
         return IntPtr.Zero;
+    }
+
+    private void SystemEvents_PowerModeChanged(object sender, PowerModeChangedEventArgs e)
+    {
+        if (e.Mode != PowerModes.Resume)
+            return;
+
+        _ = Dispatcher.BeginInvoke(async () =>
+        {
+            await RestoreTrayIconAfterShellChangeAsync();
+            if (_showCreatorPanel)
+                UpdateCreatorPanelVisibility();
+
+            _ = StabilizeDesktopLevelAsync();
+            foreach (var panel in _additionalPanels.Where(panel => panel.IsLoaded && panel.IsVisible))
+                _ = panel.StabilizeDesktopLevelAsync();
+        });
+    }
+
+    private async Task RestoreTrayIconAfterShellChangeAsync()
+    {
+        await Task.Delay(800);
+        if (_isApplicationClosing || _trayWindowHandle == IntPtr.Zero)
+            return;
+
+        RemoveTrayIcon();
+        AddTrayIcon();
     }
 
     private void AddTrayIcon()
@@ -269,7 +331,7 @@ public partial class MainWindow : Window
         _trayIconData = new NotifyIconData
         {
             Size = (uint)Marshal.SizeOf<NotifyIconData>(),
-            WindowHandle = _windowHandle,
+            WindowHandle = _trayWindowHandle,
             Id = 1,
             Flags = NifMessage | NifIcon | NifTip | NifGuid,
             CallbackMessage = WmTrayIcon,
@@ -358,6 +420,10 @@ public partial class MainWindow : Window
 
         try
         {
+            AppendMenu(menu, MfString, TraySettingsCommand, LocalizationService.T("Ustawienia"));
+            AppendMenu(menu, MfString, TrayWallpapersCommand, LocalizationService.T("Tapety"));
+            AppendMenu(menu, MfString, TrayNewPanelCommand, LocalizationService.T("Dodaj nowy panel"));
+            AppendMenu(menu, MfSeparator, 0, string.Empty);
             AppendMenu(
                 menu,
                 MfString | (_showCreatorPanel ? MfChecked : 0),
@@ -370,7 +436,9 @@ public partial class MainWindow : Window
                 LocalizationService.T("Uruchamiaj przy starcie systemu"));
             AppendMenu(menu, MfSeparator, 0, string.Empty);
             AppendMenu(menu, MfString, TrayExitCommand, LocalizationService.T("Zamknij"));
-            SetForegroundWindow(_windowHandle);
+
+            var menuOwner = _trayWindowHandle;
+            SetForegroundWindow(menuOwner);
 
             var command = TrackPopupMenu(
                 menu,
@@ -378,12 +446,18 @@ public partial class MainWindow : Window
                 cursorPosition.X,
                 cursorPosition.Y,
                 0,
-                _windowHandle,
+                menuOwner,
                 IntPtr.Zero);
 
-            PostMessage(_windowHandle, WmNull, IntPtr.Zero, IntPtr.Zero);
+            PostMessage(menuOwner, WmNull, IntPtr.Zero, IntPtr.Zero);
 
-            if (command == TrayCreatorCommand)
+            if (command == TraySettingsCommand)
+                OpenPanelsWindow();
+            else if (command == TrayWallpapersCommand)
+                OpenWallpaperWindow();
+            else if (command == TrayNewPanelCommand)
+                CreateNewPanelFromTray();
+            else if (command == TrayCreatorCommand)
             {
                 _showCreatorPanel = !_showCreatorPanel;
                 UpdateCreatorPanelVisibility();
@@ -398,6 +472,24 @@ public partial class MainWindow : Window
         {
             DestroyMenu(menu);
         }
+    }
+
+    private void OpenWallpaperWindow()
+    {
+        var wallpaperWindow = new WallpaperWindow();
+        wallpaperWindow.Show();
+        wallpaperWindow.Topmost = true;
+        wallpaperWindow.Topmost = false;
+        wallpaperWindow.Activate();
+        wallpaperWindow.Focus();
+    }
+
+    private void CreateNewPanelFromTray()
+    {
+        var panel = CreateAdditionalPanel(pendingCreation: true);
+        panel.Dispatcher.BeginInvoke(
+            System.Windows.Threading.DispatcherPriority.ApplicationIdle,
+            () => panel.OpenSettings(true));
     }
 
     private static bool IsAutoStartEnabled()
@@ -2184,10 +2276,7 @@ public partial class MainWindow : Window
         if (_windowHandle == IntPtr.Zero)
             return;
 
-        var foregroundWindow = GetForegroundWindow();
-        var insertAfter = foregroundWindow != IntPtr.Zero && foregroundWindow != _windowHandle
-            ? foregroundWindow
-            : HwndNotTopmost;
+        var insertAfter = FindBottomMostApplicationWindow();
 
         SetWindowPos(
             _windowHandle,
@@ -2197,6 +2286,44 @@ public partial class MainWindow : Window
             0,
             0,
             SwpNoActivate | SwpNoMove | SwpNoSize);
+    }
+
+    private IntPtr FindBottomMostApplicationWindow()
+    {
+        var desktopHost = GetShellWindow();
+        EnumWindows((window, _) =>
+        {
+            if (FindWindowEx(window, IntPtr.Zero, "SHELLDLL_DefView", null) == IntPtr.Zero)
+                return true;
+
+            desktopHost = window;
+            return false;
+        }, IntPtr.Zero);
+
+        if (desktopHost == IntPtr.Zero)
+            return HwndNotTopmost;
+
+        var nearestWindowAboveDesktop = GetWindow(desktopHost, GwHwndPrevious);
+        var candidate = nearestWindowAboveDesktop;
+        var currentProcessId = (uint)Environment.ProcessId;
+        while (candidate != IntPtr.Zero)
+        {
+            GetWindowThreadProcessId(candidate, out var processId);
+            var extendedStyle = GetWindowLongPtr(candidate, GwlExStyle).ToInt64();
+            if (processId != currentProcessId &&
+                IsWindowVisible(candidate) &&
+                (extendedStyle & WsExToolWindow) == 0 &&
+                GetWindowTextLength(candidate) > 0)
+            {
+                return candidate;
+            }
+
+            candidate = GetWindow(candidate, GwHwndPrevious);
+        }
+
+        return nearestWindowAboveDesktop != IntPtr.Zero && nearestWindowAboveDesktop != _windowHandle
+            ? nearestWindowAboveDesktop
+            : HwndNotTopmost;
     }
 
     private sealed class DesktopItem : INotifyPropertyChanged
@@ -2280,6 +2407,7 @@ public partial class MainWindow : Window
     }
 
     private delegate IntPtr LowLevelMouseProc(int code, IntPtr wParam, IntPtr lParam);
+    private delegate bool EnumWindowsProc(IntPtr window, IntPtr parameter);
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern IntPtr GetWindowLongPtr(IntPtr hWnd, int index);
@@ -2299,6 +2427,31 @@ public partial class MainWindow : Window
 
     [DllImport("user32.dll")]
     private static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetShellWindow();
+
+    [DllImport("user32.dll")]
+    private static extern bool EnumWindows(EnumWindowsProc callback, IntPtr parameter);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern IntPtr FindWindowEx(
+        IntPtr parent,
+        IntPtr childAfter,
+        string className,
+        string? windowName);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetWindow(IntPtr window, uint command);
+
+    [DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
+
+    [DllImport("user32.dll")]
+    private static extern bool IsWindowVisible(IntPtr window);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetWindowTextLength(IntPtr window);
 
     [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
     private static extern IntPtr SHGetFileInfo(
@@ -2354,6 +2507,9 @@ public partial class MainWindow : Window
 
     [DllImport("user32.dll")]
     private static extern bool PostMessage(IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern uint RegisterWindowMessage(string message);
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern IntPtr SetWindowsHookEx(

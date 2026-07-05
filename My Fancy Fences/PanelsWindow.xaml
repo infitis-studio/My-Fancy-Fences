@@ -639,7 +639,8 @@
                         </Button>
                         <Button x:Name="FooterUpdateButton"
                                 Width="112" MinWidth="0" Height="34" Margin="8,0,0,0" Padding="8,0"
-                                Background="#FF24252A" Click="FooterUpdateButton_Click">
+                                Background="#FF24252A" Visibility="Collapsed"
+                                Click="FooterUpdateButton_Click">
                             <Button.Template>
                                 <ControlTemplate TargetType="Button">
                                     <Border x:Name="FooterUpdateSurface"

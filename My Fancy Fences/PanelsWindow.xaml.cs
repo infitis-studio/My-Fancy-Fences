@@ -37,6 +37,7 @@ public partial class PanelsWindow : Window
 
     private void ShowUpdateAvailableUi()
     {
+        FooterUpdateButton.Visibility = Visibility.Visible;
         UpdateStatusCard.Background = new System.Windows.Media.SolidColorBrush(
             System.Windows.Media.Color.FromRgb(0x1B, 0x2C, 0x24));
         UpdateStatusCard.BorderBrush = new System.Windows.Media.SolidColorBrush(
@@ -144,6 +145,7 @@ public partial class PanelsWindow : Window
 
             if (!result.Success || result.LatestVersion is null)
             {
+                FooterUpdateButton.Visibility = Visibility.Collapsed;
                 UpdateStatusText.Text = LocalizationService.T("Nie udało się połączyć z GitHubem");
                 LatestVersionText.Text = "—";
                 LatestReleaseLinkButton.Visibility = Visibility.Collapsed;
@@ -156,6 +158,7 @@ public partial class PanelsWindow : Window
             }
             else
             {
+                FooterUpdateButton.Visibility = Visibility.Collapsed;
                 UpdateStatusText.Text = LocalizationService.T("Masz najnowszą wersję");
             }
 
@@ -163,6 +166,7 @@ public partial class PanelsWindow : Window
         }
         catch (Exception)
         {
+            FooterUpdateButton.Visibility = Visibility.Collapsed;
             UpdateStatusText.Text = LocalizationService.T("Nie udało się połączyć z GitHubem");
             LatestVersionText.Text = "—";
             LatestReleaseLinkButton.Visibility = Visibility.Collapsed;
