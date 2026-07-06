@@ -22,6 +22,7 @@ public partial class App : Application
             return;
         }
 
+        WallpaperPersistenceService.RepairMissingWallpaperFromWindowsCache();
         LocalizationService.Initialize();
         EventManager.RegisterClassHandler(
             typeof(Window),

@@ -501,19 +501,59 @@
                                 BorderBrush="#FF303035" BorderThickness="1">
                             <Grid>
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="34"/>
+                                    <ColumnDefinition Width="38"/>
                                     <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
-                                <iconPacks:PackIconLucide Kind="Archive" Width="20" Height="20"
+                                <iconPacks:PackIconLucide Kind="PackageOpen" Width="20" Height="20"
                                                           Foreground="#FFCFC7CA" VerticalAlignment="Top"/>
-                                <StackPanel Grid.Column="1">
-                                    <TextBlock Text="Kopia konfiguracji" FontWeight="SemiBold"/>
+                                <StackPanel Grid.Column="1" Margin="0,0,18,0">
+                                    <TextBlock Text="Eksport konfiguracji" FontWeight="SemiBold"/>
                                     <TextBlock Margin="0,6,0,0" Foreground="#FFA9A2A5" FontSize="11"
                                                TextWrapping="Wrap"
-                                               Text="Tutaj będzie można eksportować ustawienia do pliku oraz importować je na innym komputerze."/>
+                                               Text="Zapisuje ustawienia i panele w jednym archiwum ZIP."/>
+                                    <CheckBox x:Name="ExportShortcutsCheckBox"
+                                              Margin="0,12,0,0"
+                                              Content="Dołącz skróty (.lnk, .url)"
+                                              IsChecked="True"
+                                              Style="{StaticResource CompactCheckBoxStyle}"/>
                                 </StackPanel>
+                                <Button Grid.Column="2" Content="Eksportuj ZIP"
+                                        VerticalAlignment="Center"
+                                        Click="ExportConfigurationButton_Click"/>
                             </Grid>
                         </Border>
+                        <Border Margin="0,10,0,0" Padding="16" CornerRadius="8"
+                                Background="#FF1E1E21" BorderBrush="#FF303035" BorderThickness="1">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="38"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <iconPacks:PackIconLucide Kind="ArchiveRestore" Width="20" Height="20"
+                                                          Foreground="#FFCFC7CA" VerticalAlignment="Top"/>
+                                <StackPanel Grid.Column="1" Margin="0,0,18,0">
+                                    <TextBlock Text="Import konfiguracji" FontWeight="SemiBold"/>
+                                    <TextBlock Margin="0,6,0,0" Foreground="#FFA9A2A5" FontSize="11"
+                                               TextWrapping="Wrap"
+                                               Text="Odtwarza ustawienia z ZIP-a. Przed importem skrótów wybierzesz ich folder docelowy."/>
+                                    <CheckBox x:Name="ImportShortcutsCheckBox"
+                                              Margin="0,12,0,0"
+                                              Content="Importuj skróty do wybranego folderu"
+                                              IsChecked="True"
+                                              Style="{StaticResource CompactCheckBoxStyle}"/>
+                                </StackPanel>
+                                <Button Grid.Column="2" Content="Importuj ZIP"
+                                        VerticalAlignment="Center"
+                                        Click="ImportConfigurationButton_Click"/>
+                            </Grid>
+                        </Border>
+                        <TextBlock x:Name="ArchiveStatusText"
+                                   Margin="4,12,4,0"
+                                   Foreground="#FFA9A2A5"
+                                   FontSize="11"
+                                   TextWrapping="Wrap"/>
                     </StackPanel>
 
                     <Grid x:Name="UpdatesTabContent" Margin="4,4,4,0" Visibility="Collapsed">

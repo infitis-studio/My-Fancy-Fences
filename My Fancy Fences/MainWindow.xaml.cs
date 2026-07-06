@@ -125,6 +125,7 @@ public partial class MainWindow : Window
     private readonly List<MainWindow> _additionalPanels = [];
     private List<SavedPanelSettings> _savedAdditionalPanels = [];
     private bool _isApplicationClosing;
+    private bool _skipSaveOnShutdown;
     private bool _isPendingCreation;
     private FileSystemWatcher? _sourceFolderWatcher;
     private string? _contextItemPath;
@@ -175,7 +176,8 @@ public partial class MainWindow : Window
             if (_isPrimaryWindow)
             {
                 _isApplicationClosing = true;
-                SaveSettings();
+                if (!_skipSaveOnShutdown)
+                    SaveSettings();
                 SystemEvents.PowerModeChanged -= SystemEvents_PowerModeChanged;
                 RemoveTrayIcon();
                 _trayMessageSource?.RemoveHook(WindowMessageHook);
@@ -2060,7 +2062,11 @@ public partial class MainWindow : Window
 
         if (_panelsWindow is null)
         {
-            _panelsWindow = new PanelsWindow(panels, _useDoubleClickToOpen);
+            _panelsWindow = new PanelsWindow(
+                panels,
+                _useDoubleClickToOpen,
+                ExportConfigurationAsync,
+                ImportConfigurationAsync);
             _panelsWindow.PanelVisibilityChanged += PanelsWindow_PanelVisibilityChanged;
             _panelsWindow.EditPanelRequested += PanelsWindow_EditPanelRequested;
             _panelsWindow.RefreshIconsRequested += (_, _) => RefreshAllPanelIcons();
@@ -2080,6 +2086,35 @@ public partial class MainWindow : Window
         _panelsWindow.Topmost = false;
         _panelsWindow.Activate();
         _panelsWindow.Focus();
+    }
+
+    private Task<ConfigurationArchiveResult> ExportConfigurationAsync(
+        string archivePath,
+        bool includeShortcuts)
+    {
+        SaveSettings();
+        return ConfigurationArchiveService.ExportAsync(
+            SettingsFilePath,
+            archivePath,
+            includeShortcuts);
+    }
+
+    private async Task<ConfigurationArchiveResult> ImportConfigurationAsync(
+        string archivePath,
+        bool importShortcuts,
+        string? shortcutsDestination)
+    {
+        WallpaperPersistenceService.PreserveCurrentWallpaperBeforeRestart();
+        var result = await ConfigurationArchiveService.ImportAsync(
+            SettingsFilePath,
+            archivePath,
+            importShortcuts,
+            shortcutsDestination);
+        _skipSaveOnShutdown = true;
+        _isApplicationClosing = true;
+        ApplicationUpdater.RestartAfterCurrentProcessExits();
+        Application.Current.Shutdown();
+        return result;
     }
 
     private void RefreshAllPanelIcons()

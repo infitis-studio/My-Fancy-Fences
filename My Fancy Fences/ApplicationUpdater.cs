@@ -82,6 +82,25 @@ public static class ApplicationUpdater
         return packageKind;
     }
 
+    public static void RestartAfterCurrentProcessExits()
+    {
+        var executablePath = GetCurrentExecutablePath();
+        var scriptDirectory = Path.Combine(
+            Path.GetTempPath(),
+            "MyFancyFencesRestart",
+            Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(scriptDirectory);
+        var scriptPath = Path.Combine(scriptDirectory, "restart.ps1");
+        var script = $$"""
+            Wait-Process -Id {{Environment.ProcessId}} -ErrorAction SilentlyContinue
+            Start-Sleep -Milliseconds 350
+            Start-Process -FilePath '{{EscapePowerShell(executablePath)}}'
+            Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue
+            """;
+        File.WriteAllText(scriptPath, script);
+        StartPowerShellScript(scriptPath);
+    }
+
     private static void EnsureTargetDirectoryIsWritable(string executablePath)
     {
         var directory = Path.GetDirectoryName(executablePath)
@@ -149,6 +168,11 @@ public static class ApplicationUpdater
             """;
         File.WriteAllText(scriptPath, script);
 
+        StartPowerShellScript(scriptPath);
+    }
+
+    private static void StartPowerShellScript(string scriptPath)
+    {
         var powershellPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.Windows),
             "System32",

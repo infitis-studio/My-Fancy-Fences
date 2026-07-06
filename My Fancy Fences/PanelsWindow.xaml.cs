@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Windows;
 using System.Windows.Input;
 using MahApps.Metro.IconPacks;
+using Microsoft.Win32;
 
 namespace My_Fancy_Fences;
 
@@ -10,14 +11,22 @@ public partial class PanelsWindow : Window
     private bool _hasCheckedForUpdates;
     private string? _latestReleaseUrl;
     private UpdateCheckResult? _latestUpdate;
+    private readonly Func<string, bool, Task<ConfigurationArchiveResult>> _exportConfiguration;
+    private readonly Func<string, bool, string?, Task<ConfigurationArchiveResult>> _importConfiguration;
 
     public event EventHandler<PanelVisibilityChangedEventArgs>? PanelVisibilityChanged;
     public event EventHandler<PanelEditRequestedEventArgs>? EditPanelRequested;
     public event EventHandler? RefreshIconsRequested;
     public event EventHandler<ActivationModeChangedEventArgs>? ActivationModeChanged;
 
-    public PanelsWindow(IReadOnlyList<PanelOverviewItem> panels, bool useDoubleClickToOpen)
+    public PanelsWindow(
+        IReadOnlyList<PanelOverviewItem> panels,
+        bool useDoubleClickToOpen,
+        Func<string, bool, Task<ConfigurationArchiveResult>> exportConfiguration,
+        Func<string, bool, string?, Task<ConfigurationArchiveResult>> importConfiguration)
     {
+        _exportConfiguration = exportConfiguration;
+        _importConfiguration = importConfiguration;
         InitializeComponent();
         Icon = AppIconProvider.Image;
         DoubleClickActivationCheckBox.IsChecked = useDoubleClickToOpen;
@@ -256,6 +265,96 @@ public partial class PanelsWindow : Window
 
     private void RefreshIconsButton_Click(object sender, RoutedEventArgs e) =>
         RefreshIconsRequested?.Invoke(this, EventArgs.Empty);
+
+    private async void ExportConfigurationButton_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new SaveFileDialog
+        {
+            Title = "Eksport konfiguracji My Fancy Fences",
+            Filter = "Archiwum ZIP (*.zip)|*.zip",
+            DefaultExt = ".zip",
+            AddExtension = true,
+            FileName = $"My-Fancy-Fences-config-{DateTime.Now:yyyy-MM-dd}.zip",
+            InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments)
+        };
+        if (dialog.ShowDialog(this) != true)
+            return;
+
+        var button = (System.Windows.Controls.Button)sender;
+        button.IsEnabled = false;
+        ArchiveStatusText.Text = "Tworzenie archiwum…";
+        try
+        {
+            var result = await _exportConfiguration(
+                dialog.FileName,
+                ExportShortcutsCheckBox.IsChecked == true);
+            ArchiveStatusText.Text =
+                $"Zapisano ZIP: {result.ArchivePath}\nPanele: {result.PanelCount}, skróty: {result.ShortcutCount}.";
+        }
+        catch (Exception exception)
+        {
+            ArchiveStatusText.Text = $"Eksport nie powiódł się: {exception.Message}";
+        }
+        finally
+        {
+            button.IsEnabled = true;
+        }
+    }
+
+    private async void ImportConfigurationButton_Click(object sender, RoutedEventArgs e)
+    {
+        var archiveDialog = new OpenFileDialog
+        {
+            Title = "Import konfiguracji My Fancy Fences",
+            Filter = "Archiwum ZIP (*.zip)|*.zip",
+            CheckFileExists = true,
+            Multiselect = false
+        };
+        if (archiveDialog.ShowDialog(this) != true)
+            return;
+
+        var importShortcuts = ImportShortcutsCheckBox.IsChecked == true;
+        string? shortcutsDestination = null;
+        if (importShortcuts)
+        {
+            var folderDialog = new OpenFolderDialog
+            {
+                Title = "Wybierz folder dla importowanych skrótów",
+                Multiselect = false
+            };
+            if (folderDialog.ShowDialog(this) != true)
+                return;
+            shortcutsDestination = folderDialog.FolderName;
+        }
+
+        var confirmation = new ConfirmationWindow(
+            "Zaimportować konfigurację?",
+            "Obecne ustawienia zostaną zastąpione zawartością archiwum. Przed zmianą powstanie kopia zapasowa, a aplikacja uruchomi się ponownie.",
+            "Importuj",
+            "Anuluj")
+        {
+            Owner = this
+        };
+        if (confirmation.ShowDialog() != true)
+            return;
+
+        var button = (System.Windows.Controls.Button)sender;
+        button.IsEnabled = false;
+        ArchiveStatusText.Text = "Importowanie konfiguracji…";
+        try
+        {
+            await _importConfiguration(
+                archiveDialog.FileName,
+                importShortcuts,
+                shortcutsDestination);
+            ArchiveStatusText.Text = "Import zakończony. Ponowne uruchamianie…";
+        }
+        catch (Exception exception)
+        {
+            ArchiveStatusText.Text = $"Import nie powiódł się: {exception.Message}";
+            button.IsEnabled = true;
+        }
+    }
 
     private void DoubleClickActivationCheckBox_Changed(object sender, RoutedEventArgs e)
     {
