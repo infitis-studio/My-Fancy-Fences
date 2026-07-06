@@ -304,7 +304,11 @@ public partial class MainWindow : Window
         {
             await RestoreTrayIconAfterShellChangeAsync();
             if (_showCreatorPanel)
+            {
                 UpdateCreatorPanelVisibility();
+                if (_creatorWindow is { IsLoaded: true, IsVisible: true })
+                    _ = _creatorWindow.StabilizeDesktopLevelAsync();
+            }
 
             _ = StabilizeDesktopLevelAsync();
             foreach (var panel in _additionalPanels.Where(panel => panel.IsLoaded && panel.IsVisible))
@@ -535,7 +539,7 @@ public partial class MainWindow : Window
     {
         return Environment.ProcessPath
             ?? Process.GetCurrentProcess().MainModule?.FileName
-            ?? typeof(MainWindow).Assembly.Location;
+            ?? Path.Combine(AppContext.BaseDirectory, "My Fancy Fences.exe");
     }
 
     private static string NormalizeAutoStartPath(string? path)
@@ -2272,14 +2276,17 @@ public partial class MainWindow : Window
     }
 
     private void SendToDesktopLevel()
+        => SendWindowToDesktopLevel(_windowHandle);
+
+    internal static void SendWindowToDesktopLevel(IntPtr windowHandle)
     {
-        if (_windowHandle == IntPtr.Zero)
+        if (windowHandle == IntPtr.Zero)
             return;
 
         var insertAfter = FindBottomMostApplicationWindow();
 
         SetWindowPos(
-            _windowHandle,
+            windowHandle,
             insertAfter,
             0,
             0,
@@ -2288,7 +2295,7 @@ public partial class MainWindow : Window
             SwpNoActivate | SwpNoMove | SwpNoSize);
     }
 
-    private IntPtr FindBottomMostApplicationWindow()
+    private static IntPtr FindBottomMostApplicationWindow()
     {
         var desktopHost = GetShellWindow();
         EnumWindows((window, _) =>
@@ -2321,7 +2328,7 @@ public partial class MainWindow : Window
             candidate = GetWindow(candidate, GwHwndPrevious);
         }
 
-        return nearestWindowAboveDesktop != IntPtr.Zero && nearestWindowAboveDesktop != _windowHandle
+        return nearestWindowAboveDesktop != IntPtr.Zero
             ? nearestWindowAboveDesktop
             : HwndNotTopmost;
     }

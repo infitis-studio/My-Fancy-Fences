@@ -11,11 +11,6 @@ public partial class CreatorWindow : Window
     private const int GwlExStyle = -20;
     private const int WsExToolWindow = 0x00000080;
     private const int WsExNoActivate = 0x08000000;
-    private const uint SwpNoActivate = 0x0010;
-    private const uint SwpNoMove = 0x0002;
-    private const uint SwpNoSize = 0x0001;
-    private static readonly IntPtr HwndNotTopmost = new(-2);
-
     private IntPtr _windowHandle;
     private bool _isDragging;
     private Point _dragStart;
@@ -68,7 +63,7 @@ public partial class CreatorWindow : Window
                 ? Math.Clamp(top.Value, area.Top, Math.Max(area.Top, area.Bottom - Height))
                 : area.Top + 24;
             ApplyHeader();
-            SendToDesktopLevel();
+            _ = StabilizeDesktopLevelAsync();
         };
     }
 
@@ -273,16 +268,21 @@ public partial class CreatorWindow : Window
             preview.ApplyColorToAll));
 
     private void SendToDesktopLevel()
-    {
-        if (_windowHandle == IntPtr.Zero)
-            return;
+        => MainWindow.SendWindowToDesktopLevel(_windowHandle);
 
-        var foreground = GetForegroundWindow();
-        SetWindowPos(
-            _windowHandle,
-            foreground != IntPtr.Zero && foreground != _windowHandle ? foreground : HwndNotTopmost,
-            0, 0, 0, 0,
-            SwpNoActivate | SwpNoMove | SwpNoSize);
+    internal async Task StabilizeDesktopLevelAsync()
+    {
+        var delays = new[] { 0, 120, 450, 1200, 3000 };
+        foreach (var delay in delays)
+        {
+            if (delay > 0)
+                await Task.Delay(delay);
+
+            if (!IsLoaded || !IsVisible)
+                return;
+
+            SendToDesktopLevel();
+        }
     }
 
     [DllImport("user32.dll", SetLastError = true)]
@@ -291,18 +291,6 @@ public partial class CreatorWindow : Window
     [DllImport("user32.dll", SetLastError = true)]
     private static extern IntPtr SetWindowLongPtr(IntPtr hWnd, int index, IntPtr newLong);
 
-    [DllImport("user32.dll")]
-    private static extern IntPtr GetForegroundWindow();
-
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool SetWindowPos(
-        IntPtr hWnd,
-        IntPtr insertAfter,
-        int x,
-        int y,
-        int width,
-        int height,
-        uint flags);
 }
 
 public enum GlobalAppearancePhase

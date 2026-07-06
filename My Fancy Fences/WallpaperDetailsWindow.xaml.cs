@@ -210,17 +210,100 @@ public partial class WallpaperDetailsWindow : Window
             extension = ".jpg";
 
         var targetPath = Path.Combine(targetDirectory, $"{_wallpaper.Id}{extension}");
-        if (File.Exists(targetPath))
+        if (File.Exists(targetPath) && IsValidImageFile(targetPath))
             return targetPath;
+
+        if (File.Exists(targetPath))
+            File.Delete(targetPath);
 
         StatusText.Text = "Pobieranie tapety...";
         using var response = await HttpClient.GetAsync(_fullImageUrl);
         response.EnsureSuccessStatusCode();
 
-        await using var source = await response.Content.ReadAsStreamAsync();
-        await using var target = File.Create(targetPath);
-        await source.CopyToAsync(target);
+        var temporaryPath = $"{targetPath}.{Guid.NewGuid():N}.download";
+        try
+        {
+            await using var source = await response.Content.ReadAsStreamAsync();
+            await using (var target = File.Create(temporaryPath))
+                await source.CopyToAsync(target);
+
+            if (!IsValidImageFile(temporaryPath))
+                throw new InvalidDataException("Pobrany plik nie jest prawidłowym obrazem.");
+
+            File.Move(temporaryPath, targetPath, overwrite: true);
+        }
+        finally
+        {
+            if (File.Exists(temporaryPath))
+                File.Delete(temporaryPath);
+        }
+
         return targetPath;
+    }
+
+    private static bool IsValidImageFile(string path)
+    {
+        try
+        {
+            using var stream = File.Open(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+            var decoder = BitmapDecoder.Create(
+                stream,
+                BitmapCreateOptions.PreservePixelFormat,
+                BitmapCacheOption.OnLoad);
+            return decoder.Frames.Count > 0 &&
+                   decoder.Frames[0].PixelWidth > 0 &&
+                   decoder.Frames[0].PixelHeight > 0;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private async Task<string> PrepareWallpaperForWindowsAsync(string sourcePath)
+    {
+        var wallpaperDirectory = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "My Fancy Fences",
+            "Wallpapers");
+        Directory.CreateDirectory(wallpaperDirectory);
+
+        var targetPath = Path.Combine(wallpaperDirectory, $"{_wallpaper.Id}.jpg");
+        if (File.Exists(targetPath) && IsValidImageFile(targetPath))
+            return targetPath;
+
+        return await Task.Run(() =>
+        {
+            using var source = File.Open(sourcePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+            var decoder = BitmapDecoder.Create(
+                source,
+                BitmapCreateOptions.PreservePixelFormat,
+                BitmapCacheOption.OnLoad);
+            var converted = new FormatConvertedBitmap(
+                decoder.Frames[0],
+                PixelFormats.Bgr24,
+                null,
+                0);
+            converted.Freeze();
+
+            var encoder = new JpegBitmapEncoder { QualityLevel = 96 };
+            encoder.Frames.Add(BitmapFrame.Create(converted));
+
+            var temporaryPath = $"{targetPath}.{Guid.NewGuid():N}.tmp";
+            try
+            {
+                using (var target = File.Create(temporaryPath))
+                    encoder.Save(target);
+                File.Move(temporaryPath, targetPath, overwrite: true);
+            }
+            finally
+            {
+                if (File.Exists(temporaryPath))
+                    File.Delete(temporaryPath);
+            }
+
+            return targetPath;
+        });
     }
 
     private async void DownloadButton_Click(object sender, RoutedEventArgs e)
@@ -249,10 +332,12 @@ public partial class WallpaperDetailsWindow : Window
                 return;
             }
 
+            var windowsWallpaperPath = await PrepareWallpaperForWindowsAsync(path);
+
             var success = SystemParametersInfo(
                 SpiSetDeskWallpaper,
                 0,
-                path,
+                windowsWallpaperPath,
                 SpifUpdateIniFile | SpifSendWinIniChange);
 
             StatusText.Text = success

@@ -21,20 +21,46 @@ jobs:
         with:
           dotnet-version: "10.0.x"
 
-      - name: Publish Windows application
-        run: >-
-          dotnet publish "My Fancy Fences/My Fancy Fences.csproj"
-          --configuration Release
-          --runtime win-x64
-          --self-contained true
-          --output publish
-
-      - name: Create release archive
+      - name: Publish portable single-file application
         shell: pwsh
-        run: Compress-Archive -Path "publish/*" -DestinationPath "My-Fancy-Fences-${{ github.ref_name }}-win-x64.zip"
+        run: |
+          dotnet publish "My Fancy Fences/My Fancy Fences.csproj" `
+            --configuration Release `
+            --runtime win-x64 `
+            --self-contained true `
+            --output "publish/portable" `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:EnableCompressionInSingleFile=true `
+            -p:DebugType=None `
+            -p:DebugSymbols=false
+          Move-Item `
+            "publish/portable/My Fancy Fences.exe" `
+            "My-Fancy-Fences-${{ github.ref_name }}-Portable-win-x64.exe"
+
+      - name: Publish lightweight single-file application
+        shell: pwsh
+        run: |
+          dotnet publish "My Fancy Fences/My Fancy Fences.csproj" `
+            --configuration Release `
+            --runtime win-x64 `
+            --self-contained false `
+            --output "publish/lightweight" `
+            -p:PublishSingleFile=true `
+            -p:DebugType=None `
+            -p:DebugSymbols=false
+          Move-Item `
+            "publish/lightweight/My Fancy Fences.exe" `
+            "My-Fancy-Fences-${{ github.ref_name }}-Lightweight-win-x64.exe"
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          body: Windows x64 release of My Fancy Fences.
-          files: My-Fancy-Fences-${{ github.ref_name }}-win-x64.zip
+          body: |
+            Windows x64 release of My Fancy Fences.
+
+            - Portable: self-contained single EXE; no .NET installation required.
+            - Lightweight: smaller single EXE; requires .NET 10 Desktop Runtime.
+          files: |
+            My-Fancy-Fences-${{ github.ref_name }}-Portable-win-x64.exe
+            My-Fancy-Fences-${{ github.ref_name }}-Lightweight-win-x64.exe
