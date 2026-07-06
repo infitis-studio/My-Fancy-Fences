@@ -9,6 +9,7 @@ public partial class PanelsWindow : Window
 {
     private bool _hasCheckedForUpdates;
     private string? _latestReleaseUrl;
+    private UpdateCheckResult? _latestUpdate;
 
     public event EventHandler<PanelVisibilityChangedEventArgs>? PanelVisibilityChanged;
     public event EventHandler<PanelEditRequestedEventArgs>? EditPanelRequested;
@@ -22,7 +23,7 @@ public partial class PanelsWindow : Window
         DoubleClickActivationCheckBox.IsChecked = useDoubleClickToOpen;
         LanguageComboBox.ItemsSource = LocalizationService.Languages;
         LanguageComboBox.SelectedValue = LocalizationService.CurrentLanguage;
-        CurrentVersionText.Text = $"v{UpdateService.CurrentVersion.ToString(3)}";
+        CurrentVersionText.Text = UpdateService.FormatVersion(UpdateService.CurrentVersion);
         UpdatePanels(panels);
 
         _ = ApplyStartupUpdateStatusAsync();
@@ -31,6 +32,8 @@ public partial class PanelsWindow : Window
     private async Task ApplyStartupUpdateStatusAsync()
     {
         var result = await UpdateService.CheckAsync();
+        _latestUpdate = result;
+        _latestReleaseUrl = result.ReleaseUrl;
         if (result.IsUpdateAvailable)
             ShowUpdateAvailableUi();
     }
@@ -106,11 +109,25 @@ public partial class PanelsWindow : Window
     private async void CheckUpdatesButton_Click(object sender, RoutedEventArgs e) =>
         await CheckForUpdatesAsync(force: true);
 
-    private void OpenReleaseButton_Click(object sender, RoutedEventArgs e)
+    private async void OpenReleaseButton_Click(object sender, RoutedEventArgs e)
     {
+        var update = _latestUpdate;
+        if (update is null || !update.IsUpdateAvailable)
+        {
+            await CheckForUpdatesAsync(force: true);
+            update = _latestUpdate;
+        }
+
+        if (update is null || !update.IsUpdateAvailable)
+            return;
+
+        var packageKind = ApplicationUpdater.DetectCurrentPackageKind();
+        var packageDescription = packageKind == UpdatePackageKind.WithNet10
+            ? "WITH NET10"
+            : "REQUIRES NET10";
         var confirmation = new ConfirmationWindow(
             LocalizationService.T("Nowa wersja jest gotowa"),
-            LocalizationService.T("Program może pobrać i zainstalować najnowszą wersję automatycznie.\n\nCzy chcesz rozpocząć aktualizację?"),
+            $"Program pobierze wariant {packageDescription}, zamknie się, podmieni plik EXE i uruchomi ponownie.\n\nCzy rozpocząć automatyczną aktualizację?",
             LocalizationService.T("Aktualizuj"),
             LocalizationService.T("Nie teraz"),
             positiveConfirm: true)
@@ -118,7 +135,35 @@ public partial class PanelsWindow : Window
             Owner = this
         };
 
-        _ = confirmation.ShowDialog();
+        if (confirmation.ShowDialog() != true)
+            return;
+
+        OpenReleaseButton.IsEnabled = false;
+        CheckUpdatesButton.IsEnabled = false;
+        LatestReleaseLinkButton.IsEnabled = false;
+        try
+        {
+            var progress = new Progress<double>(value =>
+                UpdateStatusText.Text = $"Pobieranie aktualizacji… {value:P0}");
+            await ApplicationUpdater.PrepareUpdateAsync(update, progress);
+            UpdateStatusText.Text = "Instalowanie aktualizacji…";
+            Application.Current.Shutdown();
+        }
+        catch (Exception exception)
+        {
+            UpdateStatusText.Text = "Nie udało się zainstalować aktualizacji.";
+            var error = new ConfirmationWindow(
+                "Aktualizacja nie powiodła się",
+                exception.Message,
+                "OK")
+            {
+                Owner = this
+            };
+            error.ShowDialog();
+            OpenReleaseButton.IsEnabled = true;
+            CheckUpdatesButton.IsEnabled = true;
+            LatestReleaseLinkButton.IsEnabled = true;
+        }
     }
 
     private void LatestReleaseLinkButton_Click(object sender, RoutedEventArgs e)
@@ -137,8 +182,11 @@ public partial class PanelsWindow : Window
         try
         {
             var result = await UpdateService.CheckAsync(force);
+            _latestUpdate = result;
             _latestReleaseUrl = result.ReleaseUrl;
-            LatestVersionText.Text = result.LatestTag;
+            LatestVersionText.Text = result.LatestVersion is not null
+                ? UpdateService.FormatVersion(result.LatestVersion)
+                : result.LatestTag;
             LatestReleaseLinkButton.Visibility = string.IsNullOrWhiteSpace(_latestReleaseUrl)
                 ? Visibility.Collapsed
                 : Visibility.Visible;
@@ -166,6 +214,7 @@ public partial class PanelsWindow : Window
         }
         catch (Exception)
         {
+            _latestUpdate = null;
             FooterUpdateButton.Visibility = Visibility.Collapsed;
             UpdateStatusText.Text = LocalizationService.T("Nie udało się połączyć z GitHubem");
             LatestVersionText.Text = "—";

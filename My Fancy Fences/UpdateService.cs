@@ -13,6 +13,9 @@ public static class UpdateService
     public static Version CurrentVersion { get; } =
         Assembly.GetExecutingAssembly().GetName().Version ?? new Version(0, 1, 0);
 
+    public static string FormatVersion(Version version) =>
+        $"v{version.Major}.{version.Minor}.{Math.Max(version.Build, 0)}";
+
     public static Task<UpdateCheckResult> CheckAsync(bool force = false)
     {
         lock (Sync)
@@ -37,20 +40,31 @@ public static class UpdateService
             var root = document.RootElement;
             var tag = root.GetProperty("tag_name").GetString() ?? string.Empty;
             var releaseUrl = root.GetProperty("html_url").GetString();
+            var assets = root.TryGetProperty("assets", out var assetsElement)
+                ? assetsElement.EnumerateArray()
+                    .Select(asset => new UpdateAsset(
+                        asset.GetProperty("name").GetString() ?? string.Empty,
+                        asset.GetProperty("browser_download_url").GetString() ?? string.Empty,
+                        asset.TryGetProperty("size", out var size) ? size.GetInt64() : 0))
+                    .Where(asset => !string.IsNullOrWhiteSpace(asset.Name) &&
+                                    !string.IsNullOrWhiteSpace(asset.DownloadUrl))
+                    .ToArray()
+                : [];
 
             if (!Version.TryParse(tag.Trim().TrimStart('v', 'V'), out var latestVersion))
-                return new UpdateCheckResult(false, tag, null, releaseUrl, false);
+                return new UpdateCheckResult(false, tag, null, releaseUrl, false, assets);
 
             return new UpdateCheckResult(
                 true,
                 tag,
                 latestVersion,
                 releaseUrl,
-                latestVersion > CurrentVersion);
+                latestVersion > CurrentVersion,
+                assets);
         }
         catch
         {
-            return new UpdateCheckResult(false, string.Empty, null, null, false);
+            return new UpdateCheckResult(false, string.Empty, null, null, false, []);
         }
     }
 
@@ -72,4 +86,7 @@ public sealed record UpdateCheckResult(
     string LatestTag,
     Version? LatestVersion,
     string? ReleaseUrl,
-    bool IsUpdateAvailable);
+    bool IsUpdateAvailable,
+    IReadOnlyList<UpdateAsset> Assets);
+
+public sealed record UpdateAsset(string Name, string DownloadUrl, long Size);
