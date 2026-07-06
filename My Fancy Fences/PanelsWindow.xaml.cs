@@ -130,13 +130,9 @@ public partial class PanelsWindow : Window
         if (update is null || !update.IsUpdateAvailable)
             return;
 
-        var packageKind = ApplicationUpdater.DetectCurrentPackageKind();
-        var packageDescription = packageKind == UpdatePackageKind.WithNet10
-            ? "WITH NET10"
-            : "REQUIRES NET10";
         var confirmation = new ConfirmationWindow(
             LocalizationService.T("Nowa wersja jest gotowa"),
-            $"Program pobierze wariant {packageDescription}, zamknie się, podmieni plik EXE i uruchomi ponownie.\n\nCzy rozpocząć automatyczną aktualizację?",
+            "Program pobierze aktualny wariant aplikacji, zamknie się, zainstaluje nową wersję i uruchomi ponownie.\n\nCzy rozpocząć automatyczną aktualizację?",
             LocalizationService.T("Aktualizuj"),
             LocalizationService.T("Nie teraz"),
             positiveConfirm: true)
