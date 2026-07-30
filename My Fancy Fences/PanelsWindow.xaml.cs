@@ -1,6 +1,9 @@
 using System.Diagnostics;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Threading;
 using MahApps.Metro.IconPacks;
 using Microsoft.Win32;
 
@@ -11,29 +14,60 @@ public partial class PanelsWindow : Window
     private bool _hasCheckedForUpdates;
     private string? _latestReleaseUrl;
     private UpdateCheckResult? _latestUpdate;
+    private WallpaperWindow? _embeddedWallpaperWindow;
+    private bool _appearanceHideHeader;
+    private Color _appearanceBackgroundColor;
+    private double _appearanceBackgroundOpacity;
+    private bool _suppressAppearanceEvents;
+    private bool _isResizing;
+    private Point _resizeStartScreenPosition;
+    private double _resizeStartWidth;
+    private double _resizeStartHeight;
+    private readonly DispatcherTimer _panelsSmoothScrollTimer = new()
+    {
+        Interval = TimeSpan.FromMilliseconds(16)
+    };
+    private double _panelsSmoothScrollTarget;
     private readonly Func<string, bool, Task<ConfigurationArchiveResult>> _exportConfiguration;
     private readonly Func<string, bool, string?, Task<ConfigurationArchiveResult>> _importConfiguration;
 
     public event EventHandler<PanelVisibilityChangedEventArgs>? PanelVisibilityChanged;
     public event EventHandler<PanelEditRequestedEventArgs>? EditPanelRequested;
+    public event EventHandler? NewPanelRequested;
+    public event EventHandler<GlobalAppearanceEventArgs>? GlobalAppearanceChanged;
     public event EventHandler? RefreshIconsRequested;
     public event EventHandler<ActivationModeChangedEventArgs>? ActivationModeChanged;
 
     public PanelsWindow(
         IReadOnlyList<PanelOverviewItem> panels,
         bool useDoubleClickToOpen,
+        bool hideHeader,
+        Color backgroundColor,
+        double backgroundOpacity,
         Func<string, bool, Task<ConfigurationArchiveResult>> exportConfiguration,
         Func<string, bool, string?, Task<ConfigurationArchiveResult>> importConfiguration)
     {
         _exportConfiguration = exportConfiguration;
         _importConfiguration = importConfiguration;
+        _appearanceHideHeader = hideHeader;
+        _appearanceBackgroundColor = backgroundColor;
+        _appearanceBackgroundOpacity = backgroundOpacity;
         InitializeComponent();
         Icon = AppIconProvider.Image;
+        _panelsSmoothScrollTimer.Tick += PanelsSmoothScrollTimer_Tick;
         DoubleClickActivationCheckBox.IsChecked = useDoubleClickToOpen;
+        AppearanceHideHeaderCheckBox.IsChecked = hideHeader;
+        UpdateAppearanceColorPreview();
         LanguageComboBox.ItemsSource = LocalizationService.Languages;
         LanguageComboBox.SelectedValue = LocalizationService.CurrentLanguage;
         CurrentVersionText.Text = UpdateService.FormatVersion(UpdateService.CurrentVersion);
         UpdatePanels(panels);
+        Closed += (_, _) =>
+        {
+            _panelsSmoothScrollTimer.Stop();
+            _embeddedWallpaperWindow?.DisposeEmbedded();
+            _embeddedWallpaperWindow = null;
+        };
 
         _ = ApplyStartupUpdateStatusAsync();
     }
@@ -94,6 +128,7 @@ public partial class PanelsWindow : Window
     private async void SettingsTab_Checked(object sender, RoutedEventArgs e)
     {
         if (GeneralTabContent is null || PanelsTabContent is null ||
+            WallpaperTabContent is null || AppearanceTabContent is null ||
             ImportExportTabContent is null || UpdatesTabContent is null)
             return;
 
@@ -104,6 +139,12 @@ public partial class PanelsWindow : Window
         PanelsTabContent.Visibility = selectedTab == "Panels"
             ? Visibility.Visible
             : Visibility.Collapsed;
+        WallpaperTabContent.Visibility = selectedTab == "Wallpaper"
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        AppearanceTabContent.Visibility = selectedTab == "Appearance"
+            ? Visibility.Visible
+            : Visibility.Collapsed;
         ImportExportTabContent.Visibility = selectedTab == "ImportExport"
             ? Visibility.Visible
             : Visibility.Collapsed;
@@ -111,12 +152,128 @@ public partial class PanelsWindow : Window
             ? Visibility.Visible
             : Visibility.Collapsed;
 
+        if (selectedTab == "Wallpaper")
+            await EnsureWallpaperTabLoadedAsync();
+
         if (selectedTab == "Updates" && !_hasCheckedForUpdates)
             await CheckForUpdatesAsync();
     }
 
+    private void AppearanceOption_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!IsLoaded || _suppressAppearanceEvents)
+            return;
+
+        SetAppearanceActionButtonsVisible(true);
+        RaiseGlobalAppearance(GlobalAppearancePhase.Preview);
+    }
+
+    private void AppearanceBackgroundColorPreview_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        var originalColor = _appearanceBackgroundColor;
+        var originalOpacity = _appearanceBackgroundOpacity;
+        var picker = new ColorPickerWindow(_appearanceBackgroundColor, _appearanceBackgroundOpacity)
+        {
+            Owner = this
+        };
+
+        picker.PreviewChanged += (_, preview) =>
+        {
+            _appearanceBackgroundColor = preview.Color;
+            _appearanceBackgroundOpacity = preview.Opacity;
+            UpdateAppearanceColorPreview();
+            SetAppearanceActionButtonsVisible(true);
+            RaiseGlobalAppearance(GlobalAppearancePhase.Preview);
+        };
+
+        if (picker.ShowDialog() != true)
+        {
+            _appearanceBackgroundColor = originalColor;
+            _appearanceBackgroundOpacity = originalOpacity;
+            UpdateAppearanceColorPreview();
+            RaiseGlobalAppearance(GlobalAppearancePhase.Preview);
+            return;
+        }
+
+        _appearanceBackgroundColor = picker.SelectedColor;
+        _appearanceBackgroundOpacity = picker.SelectedOpacity;
+        UpdateAppearanceColorPreview();
+        SetAppearanceActionButtonsVisible(true);
+        RaiseGlobalAppearance(GlobalAppearancePhase.Preview);
+    }
+
+    private void SaveAppearanceButton_Click(object sender, RoutedEventArgs e)
+    {
+        _appearanceHideHeader = AppearanceHideHeaderCheckBox.IsChecked == true;
+        SetAppearanceActionButtonsVisible(false);
+        RaiseGlobalAppearance(GlobalAppearancePhase.Commit);
+    }
+
+    private void CancelAppearanceButton_Click(object sender, RoutedEventArgs e)
+    {
+        RaiseGlobalAppearance(GlobalAppearancePhase.Cancel);
+        _suppressAppearanceEvents = true;
+        AppearanceHideHeaderCheckBox.IsChecked = _appearanceHideHeader;
+        _suppressAppearanceEvents = false;
+        UpdateAppearanceColorPreview();
+        SetAppearanceActionButtonsVisible(false);
+    }
+
+    private void SetAppearanceActionButtonsVisible(bool visible)
+    {
+        var visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+        CancelAppearanceButton.Visibility = visibility;
+        SaveAppearanceButton.Visibility = visibility;
+    }
+
+    private void UpdateAppearanceColorPreview()
+    {
+        AppearanceBackgroundColorText.Text =
+            $"#{_appearanceBackgroundColor.R:X2}{_appearanceBackgroundColor.G:X2}{_appearanceBackgroundColor.B:X2}";
+        AppearanceBackgroundColorPreview.Background = new SolidColorBrush(Color.FromArgb(
+            (byte)Math.Round(_appearanceBackgroundOpacity * 255),
+            _appearanceBackgroundColor.R,
+            _appearanceBackgroundColor.G,
+            _appearanceBackgroundColor.B));
+    }
+
+    private void RaiseGlobalAppearance(GlobalAppearancePhase phase) =>
+        GlobalAppearanceChanged?.Invoke(this, new GlobalAppearanceEventArgs(
+            phase,
+            AppearanceHideHeaderCheckBox.IsChecked == true,
+            _appearanceBackgroundColor,
+            _appearanceBackgroundOpacity,
+            true,
+            true));
+
+    private async Task EnsureWallpaperTabLoadedAsync()
+    {
+        if (_embeddedWallpaperWindow is null)
+        {
+            _embeddedWallpaperWindow = new WallpaperWindow(embedded: true);
+            WallpaperContentHost.Content = _embeddedWallpaperWindow.DetachForEmbedding();
+        }
+
+        await _embeddedWallpaperWindow.InitializeEmbeddedAsync();
+    }
+
     private async void CheckUpdatesButton_Click(object sender, RoutedEventArgs e) =>
         await CheckForUpdatesAsync(force: true);
+
+    public void SelectTab(string tab)
+    {
+        switch (tab)
+        {
+            case "Wallpaper":
+                WallpaperTabButton.IsChecked = true;
+                break;
+            case "Panels":
+                break;
+            case "Updates":
+                UpdatesTabButton.IsChecked = true;
+                break;
+        }
+    }
 
     private async void OpenReleaseButton_Click(object sender, RoutedEventArgs e)
     {
@@ -237,6 +394,70 @@ public partial class PanelsWindow : Window
             DragMove();
     }
 
+    private void PanelsScrollViewer_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        if (sender is not ScrollViewer scrollViewer || scrollViewer.ScrollableHeight <= 0)
+            return;
+
+        var direction = e.Delta > 0 ? -1 : 1;
+        var distance = Math.Max(80, Math.Abs(e.Delta) * 0.72);
+        _panelsSmoothScrollTarget = Math.Clamp(
+            _panelsSmoothScrollTarget <= 0 ? scrollViewer.VerticalOffset + direction * distance : _panelsSmoothScrollTarget + direction * distance,
+            0,
+            scrollViewer.ScrollableHeight);
+
+        _panelsSmoothScrollTimer.Start();
+        e.Handled = true;
+    }
+
+    private void PanelsSmoothScrollTimer_Tick(object? sender, EventArgs e)
+    {
+        var current = PanelsScrollViewer.VerticalOffset;
+        var delta = _panelsSmoothScrollTarget - current;
+
+        if (Math.Abs(delta) < 0.7)
+        {
+            PanelsScrollViewer.ScrollToVerticalOffset(_panelsSmoothScrollTarget);
+            _panelsSmoothScrollTimer.Stop();
+            return;
+        }
+
+        PanelsScrollViewer.ScrollToVerticalOffset(current + delta * 0.22);
+    }
+
+    private void ResizeGrip_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ButtonState != MouseButtonState.Pressed)
+            return;
+
+        _isResizing = true;
+        _resizeStartScreenPosition = PointToScreen(e.GetPosition(this));
+        _resizeStartWidth = ActualWidth;
+        _resizeStartHeight = ActualHeight;
+        ((UIElement)sender).CaptureMouse();
+        e.Handled = true;
+    }
+
+    private void ResizeGrip_MouseMove(object sender, MouseEventArgs e)
+    {
+        if (!_isResizing || e.LeftButton != MouseButtonState.Pressed)
+            return;
+
+        var currentScreenPosition = PointToScreen(e.GetPosition(this));
+        Width = Math.Max(MinWidth, _resizeStartWidth + currentScreenPosition.X - _resizeStartScreenPosition.X);
+        Height = Math.Max(MinHeight, _resizeStartHeight + currentScreenPosition.Y - _resizeStartScreenPosition.Y);
+    }
+
+    private void ResizeGrip_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (!_isResizing)
+            return;
+
+        _isResizing = false;
+        ((UIElement)sender).ReleaseMouseCapture();
+        e.Handled = true;
+    }
+
     private void CloseButton_Click(object sender, RoutedEventArgs e) => Close();
 
     private void PanelVisibilityButton_Click(object sender, RoutedEventArgs e)
@@ -258,6 +479,9 @@ public partial class PanelsWindow : Window
         if (sender is System.Windows.Controls.Button { Tag: string panelKey })
             EditPanelRequested?.Invoke(this, new PanelEditRequestedEventArgs(panelKey));
     }
+
+    private void AddPanelButton_Click(object sender, RoutedEventArgs e) =>
+        NewPanelRequested?.Invoke(this, EventArgs.Empty);
 
     private void RefreshIconsButton_Click(object sender, RoutedEventArgs e) =>
         RefreshIconsRequested?.Invoke(this, EventArgs.Empty);
@@ -310,18 +534,6 @@ public partial class PanelsWindow : Window
             return;
 
         var importShortcuts = ImportShortcutsCheckBox.IsChecked == true;
-        string? shortcutsDestination = null;
-        if (importShortcuts)
-        {
-            var folderDialog = new OpenFolderDialog
-            {
-                Title = "Wybierz folder dla importowanych skrótów",
-                Multiselect = false
-            };
-            if (folderDialog.ShowDialog(this) != true)
-                return;
-            shortcutsDestination = folderDialog.FolderName;
-        }
 
         var confirmation = new ConfirmationWindow(
             "Zaimportować konfigurację?",
@@ -342,7 +554,7 @@ public partial class PanelsWindow : Window
             await _importConfiguration(
                 archiveDialog.FileName,
                 importShortcuts,
-                shortcutsDestination);
+                null);
             ArchiveStatusText.Text = "Import zakończony. Ponowne uruchamianie…";
         }
         catch (Exception exception)

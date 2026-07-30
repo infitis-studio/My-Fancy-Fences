@@ -100,9 +100,6 @@ public static class ConfigurationArchiveService
     {
         if (!File.Exists(archivePath))
             throw new FileNotFoundException("Nie znaleziono wybranego archiwum.", archivePath);
-        if (importShortcuts && string.IsNullOrWhiteSpace(shortcutsDestination))
-            throw new InvalidOperationException("Wybierz folder docelowy dla skrótów.");
-
         using var archive = ZipFile.OpenRead(archivePath);
         var manifest = ReadJsonEntry<ArchiveManifest>(archive, "manifest.json")
             ?? throw new InvalidDataException("Archiwum nie zawiera prawidłowego manifestu.");
@@ -120,12 +117,10 @@ public static class ConfigurationArchiveService
         var importedShortcutCount = 0;
         if (importShortcuts && manifest.IncludesShortcuts)
         {
-            Directory.CreateDirectory(shortcutsDestination!);
             foreach (var panel in manifest.Panels)
             {
-                var panelFolder = CreateUniqueDirectory(
-                    shortcutsDestination!,
-                    $"{panel.Index + 1:D2} - {SanitizeFileName(panel.Title)}");
+                var panelFolder = PanelStorageService.GetPanelFolder(panel.Index, panel.Title);
+                Directory.CreateDirectory(panelFolder);
                 foreach (var entry in archive.Entries.Where(entry =>
                              entry.FullName.StartsWith(panel.ArchiveFolder, StringComparison.OrdinalIgnoreCase) &&
                              !string.IsNullOrWhiteSpace(entry.Name)))

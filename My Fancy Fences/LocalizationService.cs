@@ -194,7 +194,6 @@ public static class LocalizationService
         Add("Ustawienia", "Settings", "Einstellungen", "Paramètres", "Ajustes", "Impostazioni", "Configurações", "Instellingen", "Nastavení", "Налаштування", "Настройки", "设置");
         Add("Ustawienia panelu", "Panel settings", "Panel-Einstellungen", "Paramètres du panneau", "Ajustes del panel", "Impostazioni pannello", "Configurações do painel", "Paneelinstellingen", "Nastavení panelu", "Налаштування панелі", "Настройки панели", "面板设置");
         Add("Ustawienia kreatora", "Creator settings", "Ersteller-Einstellungen", "Paramètres du créateur", "Ajustes del creador", "Impostazioni creazione", "Configurações do criador", "Makerinstellingen", "Nastavení tvůrce", "Налаштування конструктора", "Настройки конструктора", "创建器设置");
-        Add("Wygląd wspólny", "Shared appearance", "Gemeinsames Aussehen", "Apparence partagée", "Apariencia compartida", "Aspetto condiviso", "Aparência compartilhada", "Gedeeld uiterlijk", "Společný vzhled", "Спільний вигляд", "Общий вид", "共享外观");
         Add("Ogólne", "General", "Allgemein", "Général", "General", "Generali", "Geral", "Algemeen", "Obecné", "Загальні", "Общие", "常规");
         Add("Panele", "Panels", "Panels", "Panneaux", "Paneles", "Pannelli", "Painéis", "Panelen", "Panely", "Панелі", "Панели", "面板");
         Add("Import / eksport", "Import / export", "Import / Export", "Import / export", "Importar / exportar", "Importa / esporta", "Importar / exportar", "Import / export", "Import / export", "Імпорт / експорт", "Импорт / экспорт", "导入 / 导出");

@@ -57,7 +57,14 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           body: |
-            Windows x64 release of My Fancy Fences.
+            My Fancy Fences 2.0 for Windows x64.
+
+            Highlights:
+            - App-managed shortcuts instead of user-managed source folders.
+            - New management window with Panels, Wallpaper, Appearance, Import/Export, and Update tabs.
+            - Wallhaven wallpaper browsing is now available inside the management window.
+            - Empty panels now show a guided shortcut prompt.
+            - Improved panel creation, shared appearance controls, dialogs, and scrolling.
 
             - WITH NET10: single EXE with .NET 10 included; no additional runtime required.
             - REQUIRES NET10: smaller single EXE; requires .NET 10 Desktop Runtime.

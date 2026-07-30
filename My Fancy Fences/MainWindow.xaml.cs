@@ -44,6 +44,7 @@ public partial class MainWindow : Window
     private const uint NifTip = 0x00000004;
     private const uint NifGuid = 0x00000020;
     private const uint NotifyIconVersion4 = 4;
+    private const uint WmLeftButtonDoubleClick = 0x0203;
     private const uint MfString = 0x00000000;
     private const uint MfChecked = 0x00000008;
     private const uint MfSeparator = 0x00000800;
@@ -59,6 +60,7 @@ public partial class MainWindow : Window
     private const int WmLeftButtonDown = 0x0201;
     private const int WmRightButtonDown = 0x0204;
     private const int WmMiddleButtonDown = 0x0207;
+    private const string AddShortcutPlaceholderPath = "my-fancy-fences://add-first-shortcut";
     private const string AutoStartRegistryPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
     private const string AutoStartRegistryValueName = "My Fancy Fences";
     private static readonly IntPtr HwndNotTopmost = new(-2);
@@ -68,7 +70,7 @@ public partial class MainWindow : Window
     private IntPtr _trayWindowHandle;
     private HwndSource? _trayMessageSource;
     private uint _taskbarCreatedMessage;
-    private string _sourceFolder = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+    private string _sourceFolder = string.Empty;
     private bool _hideFolders;
     private Color _backgroundColor = Color.FromRgb(0x0B, 0x0E, 0x12);
     private double _backgroundOpacity = 0.58;
@@ -119,6 +121,8 @@ public partial class MainWindow : Window
     private bool? _globalPreviewOriginalHeaderHidden;
     private Color? _globalPreviewOriginalBackgroundColor;
     private double? _globalPreviewOriginalBackgroundOpacity;
+    private Dictionary<MainWindow, (bool HideHeader, Color BackgroundColor, double BackgroundOpacity)>? _globalPreviewOriginalPanelAppearances;
+    private (bool HideHeader, Color BackgroundColor, double BackgroundOpacity)? _globalPreviewOriginalCreatorAppearance;
     private readonly bool _isPrimaryWindow;
     private readonly int _newPanelIndex;
     private readonly Action? _requestHostSave;
@@ -143,6 +147,7 @@ public partial class MainWindow : Window
         _isPrimaryWindow = isPrimaryWindow;
         _requestHostSave = requestHostSave;
         _newPanelIndex = isPrimaryWindow ? 0 : ++_newPanelCount;
+        _sourceFolder = PanelStorageService.GetPanelFolder(_newPanelIndex, isPrimaryWindow ? "Main" : "Panel");
         _folderRefreshTimer = new System.Windows.Threading.DispatcherTimer
         {
             Interval = TimeSpan.FromMilliseconds(350)
@@ -288,6 +293,12 @@ public partial class MainWindow : Window
 
         var trayNotification = unchecked((uint)lParam.ToInt64()) & 0xFFFF;
         if (message == WmTrayIcon &&
+            trayNotification == WmLeftButtonDoubleClick)
+        {
+            OpenPanelsWindow();
+            handled = true;
+        }
+        else if (message == WmTrayIcon &&
             (trayNotification == WmRightButtonUp || trayNotification == WmContextMenu))
         {
             ShowTrayMenu();
@@ -426,7 +437,7 @@ public partial class MainWindow : Window
 
         try
         {
-            AppendMenu(menu, MfString, TraySettingsCommand, LocalizationService.T("Ustawienia"));
+            AppendMenu(menu, MfString, TraySettingsCommand, "Zarządzanie");
             AppendMenu(menu, MfString, TrayWallpapersCommand, LocalizationService.T("Tapety"));
             AppendMenu(menu, MfString, TrayNewPanelCommand, LocalizationService.T("Dodaj nowy panel"));
             AppendMenu(menu, MfSeparator, 0, string.Empty);
@@ -460,7 +471,7 @@ public partial class MainWindow : Window
             if (command == TraySettingsCommand)
                 OpenPanelsWindow();
             else if (command == TrayWallpapersCommand)
-                OpenWallpaperWindow();
+                OpenPanelsWindow("Wallpaper");
             else if (command == TrayNewPanelCommand)
                 CreateNewPanelFromTray();
             else if (command == TrayCreatorCommand)
@@ -598,6 +609,10 @@ public partial class MainWindow : Window
 
     private void LoadDesktopItems()
     {
+        _sourceFolder = PanelStorageService.EnsurePanelFolder(
+            _sourceFolder,
+            _newPanelIndex,
+            TitleText.Text);
         StartWatchingSourceFolder();
 
         _itemsLoadCancellation?.Cancel();
@@ -623,13 +638,28 @@ public partial class MainWindow : Window
                     .Take(24)
                     .ToList();
 
-                return items.Select(CreateDesktopItem).ToList();
+                var desktopItems = items.Select(CreateDesktopItem).ToList();
+                if (desktopItems.Count == 0)
+                {
+                    desktopItems.Add(new DesktopItem(
+                        $"Aby dodać skrót kliknij tutaj{Environment.NewLine}albo przeciągnij ikonę",
+                        AddShortcutPlaceholderPath,
+                        CreateAddShortcutIcon()));
+                }
+
+                return desktopItems;
             }, cancellationToken);
 
             if (!cancellationToken.IsCancellationRequested &&
                 string.Equals(sourceFolder, _sourceFolder, StringComparison.OrdinalIgnoreCase))
             {
                 DesktopItemsControl.ItemsSource = entries;
+                DesktopItemsControl.HorizontalAlignment = entries.Count == 1 && entries[0].IsPlaceholder
+                    ? HorizontalAlignment.Center
+                    : HorizontalAlignment.Stretch;
+                DesktopItemsControl.VerticalAlignment = entries.Count == 1 && entries[0].IsPlaceholder
+                    ? VerticalAlignment.Center
+                    : VerticalAlignment.Stretch;
                 await LoadDesktopItemIconsAsync(entries, sourceFolder, cancellationToken);
             }
         }
@@ -651,7 +681,7 @@ public partial class MainWindow : Window
         string sourceFolder,
         CancellationToken cancellationToken)
     {
-        foreach (var item in entries.Where(item => item.Icon is null))
+        foreach (var item in entries.Where(item => item.Icon is null && !item.IsPlaceholder))
         {
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -766,6 +796,19 @@ public partial class MainWindow : Window
         return new DesktopItem(displayName, item.FullName, cachedIcon);
     }
 
+    private static ImageSource CreateAddShortcutIcon()
+    {
+        var drawing = new GeometryDrawing
+        {
+            Brush = new SolidColorBrush(Color.FromArgb(120, 247, 249, 252)),
+            Geometry = Geometry.Parse("M20,6 Q20,4 22,4 L26,4 Q28,4 28,6 L28,20 L42,20 Q44,20 44,22 L44,26 Q44,28 42,28 L28,28 L28,42 Q28,44 26,44 L22,44 Q20,44 20,42 L20,28 L6,28 Q4,28 4,26 L4,22 Q4,20 6,20 L20,20 Z")
+        };
+        drawing.Freeze();
+        var image = new DrawingImage(drawing);
+        image.Freeze();
+        return image;
+    }
+
     private static ImageSource? GetShellIcon(string path)
     {
         if (IconCache.TryGetValue(path, out var cachedIcon))
@@ -872,7 +915,10 @@ public partial class MainWindow : Window
 
         try
         {
-            Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+            if (string.Equals(path, AddShortcutPlaceholderPath, StringComparison.Ordinal))
+                AddShortcutViaDialog();
+            else
+                Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
             e.Handled = true;
         }
         catch (Exception)
@@ -884,6 +930,9 @@ public partial class MainWindow : Window
     private void DesktopItem_MouseRightButtonUp(object sender, MouseButtonEventArgs e)
     {
         if (sender is not FrameworkElement { Tag: string path })
+            return;
+
+        if (string.Equals(path, AddShortcutPlaceholderPath, StringComparison.Ordinal))
             return;
 
         ItemActionsPopup.IsOpen = false;
@@ -1028,7 +1077,7 @@ public partial class MainWindow : Window
     private static void UpdatePanelDropEffect(DragEventArgs e)
     {
         e.Effects = e.Data.GetDataPresent(DataFormats.FileDrop)
-            ? DragDropEffects.Move
+            ? DragDropEffects.Link
             : DragDropEffects.None;
         e.Handled = true;
     }
@@ -1038,9 +1087,13 @@ public partial class MainWindow : Window
         e.Handled = true;
         e.Effects = DragDropEffects.None;
 
+        _sourceFolder = PanelStorageService.EnsurePanelFolder(
+            _sourceFolder,
+            _newPanelIndex,
+            TitleText.Text);
+
         if (!e.Data.GetDataPresent(DataFormats.FileDrop) ||
-            e.Data.GetData(DataFormats.FileDrop) is not string[] droppedPaths ||
-            !Directory.Exists(_sourceFolder))
+            e.Data.GetData(DataFormats.FileDrop) is not string[] droppedPaths)
         {
             return;
         }
@@ -1061,8 +1114,8 @@ public partial class MainWindow : Window
             : $"{paths.Length} elementy";
         var confirmation = new ConfirmationWindow(
             $"Dodać do panelu „{panelName}”?",
-            $"Czy przenieść {itemDescription} do panelu „{panelName}”?\n\nElementy zostaną przeniesione z obecnego miejsca do folderu panelu.",
-            "Przenieś")
+            $"Czy dodać skrót do {itemDescription} w panelu „{panelName}”?\n\nOryginalne pliki zostaną na swoim miejscu, a aplikacja zapisze tylko skrót w swoich danych.",
+            "Dodaj")
         {
             Owner = this
         };
@@ -1077,9 +1130,10 @@ public partial class MainWindow : Window
         if (confirmation.ShowDialog() != true)
             return;
 
-        e.Effects = DragDropEffects.Move;
-        var failures = await Task.Run(() => MoveDroppedItems(paths, _sourceFolder));
+        e.Effects = DragDropEffects.Link;
+        var failures = await Task.Run(() => PanelStorageService.AddShortcuts(paths, _sourceFolder));
         LoadDesktopItems();
+        SaveSettings();
 
         if (failures.Count == 0)
             return;
@@ -1088,6 +1142,42 @@ public partial class MainWindow : Window
             ? $"Nie udało się dodać elementu „{failures[0]}”."
             : $"Nie udało się dodać {failures.Count} elementów.";
         var error = new ConfirmationWindow("Nie udało się dodać", message, "OK")
+        {
+            Owner = this
+        };
+        error.ShowDialog();
+    }
+
+    private void AddShortcutViaDialog()
+    {
+        _sourceFolder = PanelStorageService.EnsurePanelFolder(
+            _sourceFolder,
+            _newPanelIndex,
+            TitleText.Text);
+
+        var dialog = new OpenFileDialog
+        {
+            Title = "Wybierz aplikację, plik albo skrót",
+            Filter = "Aplikacje, pliki i skróty|*.exe;*.lnk;*.url;*.website;*.*|Wszystkie pliki|*.*",
+            Multiselect = true
+        };
+
+        if (dialog.ShowDialog(this) != true || dialog.FileNames.Length == 0)
+            return;
+
+        var failures = PanelStorageService.AddShortcuts(dialog.FileNames, _sourceFolder);
+        LoadDesktopItems();
+        SaveSettings();
+
+        if (failures.Count == 0)
+            return;
+
+        var error = new ConfirmationWindow(
+            "Nie udało się dodać skrótu",
+            failures.Count == 1
+                ? $"Nie udało się dodać „{failures[0]}”."
+                : $"Nie udało się dodać {failures.Count} elementów.",
+            "OK")
         {
             Owner = this
         };
@@ -1698,9 +1788,10 @@ public partial class MainWindow : Window
             HeaderIcon.Kind = settings.Icon;
             Width = Math.Max(MinWidth, settings.Width);
             Height = Math.Max(MinHeight, settings.Height);
-            _sourceFolder = Directory.Exists(settings.SourceFolder)
-                ? settings.SourceFolder
-                : Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+            _sourceFolder = PanelStorageService.EnsurePanelFolder(
+                settings.SourceFolder,
+                _newPanelIndex,
+                settings.Title);
             _hideFolders = settings.HideFolders ?? false;
             _useDoubleClickToOpen = settings.UseDoubleClickToOpen ?? false;
             _isHeaderHidden = settings.HideHeader;
@@ -1763,6 +1854,18 @@ public partial class MainWindow : Window
 
         try
         {
+            _sourceFolder = PanelStorageService.EnsurePanelFolder(
+                _sourceFolder,
+                _newPanelIndex,
+                TitleText.Text);
+            foreach (var panel in _additionalPanels.Where(panel => panel.IsLoaded && !panel._isPendingCreation))
+            {
+                panel._sourceFolder = PanelStorageService.EnsurePanelFolder(
+                    panel._sourceFolder,
+                    panel._newPanelIndex,
+                    panel.TitleText.Text);
+            }
+
             var directory = Path.GetDirectoryName(SettingsFilePath);
             if (directory is not null)
                 Directory.CreateDirectory(directory);
@@ -1939,9 +2042,10 @@ public partial class MainWindow : Window
         HeaderIcon.Kind = settings.Icon;
         Width = Math.Max(MinWidth, settings.Width);
         Height = Math.Max(MinHeight, settings.Height);
-        _sourceFolder = Directory.Exists(settings.SourceFolder)
-            ? settings.SourceFolder
-            : Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+        _sourceFolder = PanelStorageService.EnsurePanelFolder(
+            settings.SourceFolder,
+            _newPanelIndex,
+            settings.Title);
         _hideFolders = settings.HideFolders ?? false;
         _savedLeft = settings.Left;
         _savedTop = settings.Top;
@@ -2044,7 +2148,7 @@ public partial class MainWindow : Window
                         () => panel.OpenSettings(true));
                 };
                 _creatorWindow.SettingsRequested += (_, _) => OpenPanelsWindow();
-                _creatorWindow.GlobalAppearanceChanged += CreatorWindow_GlobalAppearanceChanged;
+                _creatorWindow.WallpaperRequested += (_, _) => OpenPanelsWindow("Wallpaper");
             }
 
             if (!_creatorWindow.IsVisible)
@@ -2056,7 +2160,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private void OpenPanelsWindow()
+    private void OpenPanelsWindow(string? initialTab = null)
     {
         var panels = CreatePanelOverviewList();
 
@@ -2065,10 +2169,15 @@ public partial class MainWindow : Window
             _panelsWindow = new PanelsWindow(
                 panels,
                 _useDoubleClickToOpen,
+                _isHeaderHidden,
+                _backgroundColor,
+                _backgroundOpacity,
                 ExportConfigurationAsync,
                 ImportConfigurationAsync);
             _panelsWindow.PanelVisibilityChanged += PanelsWindow_PanelVisibilityChanged;
             _panelsWindow.EditPanelRequested += PanelsWindow_EditPanelRequested;
+            _panelsWindow.NewPanelRequested += (_, _) => CreateNewPanelFromTray();
+            _panelsWindow.GlobalAppearanceChanged += PanelsWindow_GlobalAppearanceChanged;
             _panelsWindow.RefreshIconsRequested += (_, _) => RefreshAllPanelIcons();
             _panelsWindow.ActivationModeChanged += (_, args) =>
                 SetDoubleClickActivation(args.UseDoubleClickToOpen);
@@ -2081,6 +2190,9 @@ public partial class MainWindow : Window
 
         if (!_panelsWindow.IsVisible)
             _panelsWindow.Show();
+
+        if (!string.IsNullOrWhiteSpace(initialTab))
+            _panelsWindow.SelectTab(initialTab);
 
         _panelsWindow.Topmost = true;
         _panelsWindow.Topmost = false;
@@ -2208,19 +2320,44 @@ public partial class MainWindow : Window
             panel._newPanelIndex.ToString(),
             title,
             panel.HeaderIcon.Kind,
-            panel._sourceFolder,
+            $"{CountPanelShortcuts(panel._sourceFolder)} skrótów",
             $"{width:0} × {height:0} px · {LocalizationService.T("ikony")} {panel._iconSize:0} px",
             panel.IsVisible ? LocalizationService.T("Widoczny") : LocalizationService.T("Ukryty"),
             !panel.IsVisible);
     }
 
-    private void CreatorWindow_GlobalAppearanceChanged(object? sender, GlobalAppearanceEventArgs e)
+    private static int CountPanelShortcuts(string folder)
+    {
+        try
+        {
+            return Directory.Exists(folder)
+                ? Directory.EnumerateFileSystemEntries(folder).Count()
+                : 0;
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    private void PanelsWindow_GlobalAppearanceChanged(object? sender, GlobalAppearanceEventArgs e)
     {
         if (_globalPreviewOriginalHeaderHidden is null)
         {
             _globalPreviewOriginalHeaderHidden = _isHeaderHidden;
             _globalPreviewOriginalBackgroundColor = _backgroundColor;
             _globalPreviewOriginalBackgroundOpacity = _backgroundOpacity;
+            _globalPreviewOriginalPanelAppearances = GetAllPanels()
+                .ToDictionary(
+                    panel => panel,
+                    panel => (panel._isHeaderHidden, panel._backgroundColor, panel._backgroundOpacity));
+            if (_creatorWindow is not null)
+            {
+                _globalPreviewOriginalCreatorAppearance = (
+                    _creatorWindow.IsHeaderHidden,
+                    _creatorWindow.BackgroundColor,
+                    _creatorWindow.BackgroundOpacity);
+            }
         }
 
         if (e.Phase == GlobalAppearancePhase.Cancel)
@@ -2229,36 +2366,28 @@ public partial class MainWindow : Window
             return;
         }
 
-        ApplyHeaderPresentation(
-            e.ApplyHeaderToAll
-                ? e.HideHeader
-                : _globalPreviewOriginalHeaderHidden.Value);
+        foreach (var panel in GetAllPanels())
+        {
+            if (!_globalPreviewOriginalPanelAppearances!.TryGetValue(panel, out var original))
+                continue;
 
-        if (e.ApplyColorToAll)
-        {
-            ApplyBackground(e.BackgroundColor, e.BackgroundOpacity);
+            panel.ApplyHeaderPresentation(
+                e.ApplyHeaderToAll ? e.HideHeader : original.HideHeader);
+            panel.ApplyBackground(
+                e.ApplyColorToAll ? e.BackgroundColor : original.BackgroundColor,
+                e.ApplyColorToAll ? e.BackgroundOpacity : original.BackgroundOpacity);
         }
-        else
-        {
-            ApplyBackground(
-                _globalPreviewOriginalBackgroundColor!.Value,
-                _globalPreviewOriginalBackgroundOpacity!.Value);
-        }
+
+        ApplyCreatorGlobalAppearance(e);
 
         if (e.Phase == GlobalAppearancePhase.Commit)
         {
-            if (e.ApplyHeaderToAll)
-                _isHeaderHidden = e.HideHeader;
-
-            if (e.ApplyColorToAll)
-            {
-                _backgroundColor = e.BackgroundColor;
-                _backgroundOpacity = e.BackgroundOpacity;
-            }
-
             _globalPreviewOriginalHeaderHidden = null;
             _globalPreviewOriginalBackgroundColor = null;
             _globalPreviewOriginalBackgroundOpacity = null;
+            _globalPreviewOriginalPanelAppearances = null;
+            _globalPreviewOriginalCreatorAppearance = null;
+            SaveSettings();
         }
     }
 
@@ -2267,14 +2396,46 @@ public partial class MainWindow : Window
         if (_globalPreviewOriginalHeaderHidden is null)
             return;
 
-        ApplyHeaderPresentation(_globalPreviewOriginalHeaderHidden.Value);
-        ApplyBackground(
-            _globalPreviewOriginalBackgroundColor!.Value,
-            _globalPreviewOriginalBackgroundOpacity!.Value);
+        if (_globalPreviewOriginalPanelAppearances is not null)
+        {
+            foreach (var (panel, original) in _globalPreviewOriginalPanelAppearances)
+            {
+                panel.ApplyHeaderPresentation(original.HideHeader);
+                panel.ApplyBackground(original.BackgroundColor, original.BackgroundOpacity);
+            }
+        }
+
+        if (_creatorWindow is not null && _globalPreviewOriginalCreatorAppearance is { } creatorOriginal)
+        {
+            _creatorWindow.ApplyGlobalAppearance(
+                creatorOriginal.HideHeader,
+                creatorOriginal.BackgroundColor,
+                creatorOriginal.BackgroundOpacity);
+        }
 
         _globalPreviewOriginalHeaderHidden = null;
         _globalPreviewOriginalBackgroundColor = null;
         _globalPreviewOriginalBackgroundOpacity = null;
+        _globalPreviewOriginalPanelAppearances = null;
+        _globalPreviewOriginalCreatorAppearance = null;
+    }
+
+    private IEnumerable<MainWindow> GetAllPanels()
+    {
+        yield return this;
+        foreach (var panel in _additionalPanels.Where(panel => panel.IsLoaded && !panel._isPendingCreation))
+            yield return panel;
+    }
+
+    private void ApplyCreatorGlobalAppearance(GlobalAppearanceEventArgs e)
+    {
+        if (_creatorWindow is null || _globalPreviewOriginalCreatorAppearance is not { } original)
+            return;
+
+        _creatorWindow.ApplyGlobalAppearance(
+            e.ApplyHeaderToAll ? e.HideHeader : original.HideHeader,
+            e.ApplyColorToAll ? e.BackgroundColor : original.BackgroundColor,
+            e.ApplyColorToAll ? e.BackgroundOpacity : original.BackgroundOpacity);
     }
 
     private void ResizeArea_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -2372,15 +2533,26 @@ public partial class MainWindow : Window
     {
         private ImageSource? _icon;
 
-        public DesktopItem(string name, string path, ImageSource? icon)
+        public DesktopItem(string name, string path, ImageSource? icon, string? hint = null)
         {
             Name = name;
             Path = path;
+            Hint = hint ?? string.Empty;
             _icon = icon;
         }
 
         public string Name { get; }
         public string Path { get; }
+        public string Hint { get; }
+        public bool IsPlaceholder => string.Equals(Path, AddShortcutPlaceholderPath, StringComparison.Ordinal);
+        public double TextOpacity => IsPlaceholder ? 0.47 : 1;
+        public int LabelMaxLines => IsPlaceholder ? 4 : 2;
+        public double LabelMaxHeight => IsPlaceholder ? 58 : double.PositiveInfinity;
+        public Visibility NormalLabelVisibility => IsPlaceholder ? Visibility.Collapsed : Visibility.Visible;
+        public Visibility PlaceholderLabelVisibility => IsPlaceholder ? Visibility.Visible : Visibility.Collapsed;
+        public Visibility HintVisibility => string.IsNullOrWhiteSpace(Hint) || IsPlaceholder
+            ? Visibility.Collapsed
+            : Visibility.Visible;
 
         public ImageSource? Icon
         {

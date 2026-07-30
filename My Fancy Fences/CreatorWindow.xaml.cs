@@ -24,7 +24,7 @@ public partial class CreatorWindow : Window
     public event EventHandler? CreatorStateChanged;
     public event EventHandler? NewPanelRequested;
     public event EventHandler? SettingsRequested;
-    public event EventHandler<GlobalAppearanceEventArgs>? GlobalAppearanceChanged;
+    public event EventHandler? WallpaperRequested;
 
     public CreatorWindow(
         bool hideHeader,
@@ -156,83 +156,23 @@ public partial class CreatorWindow : Window
             color.B));
     }
 
+    internal void ApplyGlobalAppearance(bool hideHeader, Color backgroundColor, double backgroundOpacity)
+    {
+        IsHeaderHidden = hideHeader;
+        ApplyHeader();
+        ApplyBackground(backgroundColor, backgroundOpacity);
+        CreatorStateChanged?.Invoke(this, EventArgs.Empty);
+    }
+
     private void ApplyIconSize(double iconSize)
     {
         IconSize = Math.Clamp(iconSize, 22, 42);
         Resources["CreatorIconSize"] = IconSize;
     }
 
-    private void AppearanceButton_Click(object sender, RoutedEventArgs e)
-    {
-        _isDragging = false;
-        if (DragSurface.IsMouseCaptured)
-            DragSurface.ReleaseMouseCapture();
-
-        var originalHeader = IsHeaderHidden;
-        var originalColor = BackgroundColor;
-        var originalOpacity = BackgroundOpacity;
-        var settings = new CreatorSettingsWindow(
-            IsHeaderHidden,
-            BackgroundColor,
-            BackgroundOpacity);
-        settings.Loaded += (_, _) => BringWindowToFront(settings);
-
-        settings.PreviewChanged += (_, preview) =>
-        {
-            IsHeaderHidden = preview.ApplyHeaderToAll
-                ? preview.HideHeader
-                : originalHeader;
-            ApplyHeader();
-            ApplyBackground(
-                preview.ApplyColorToAll ? preview.BackgroundColor : originalColor,
-                preview.ApplyColorToAll ? preview.BackgroundOpacity : originalOpacity);
-            RaiseGlobalAppearance(GlobalAppearancePhase.Preview, preview);
-        };
-
-        if (settings.ShowDialog() != true)
-        {
-            IsHeaderHidden = originalHeader;
-            ApplyHeader();
-            ApplyBackground(originalColor, originalOpacity);
-            GlobalAppearanceChanged?.Invoke(this, new GlobalAppearanceEventArgs(
-                GlobalAppearancePhase.Cancel,
-                IsHeaderHidden,
-                originalColor,
-                originalOpacity,
-                false,
-                false));
-        }
-        else
-        {
-            IsHeaderHidden = settings.ApplyHeaderToAll
-                ? settings.HideHeader
-                : originalHeader;
-            ApplyHeader();
-            ApplyBackground(
-                settings.ApplyColorToAll ? settings.BackgroundColor : originalColor,
-                settings.ApplyColorToAll ? settings.BackgroundOpacity : originalOpacity);
-            GlobalAppearanceChanged?.Invoke(this, new GlobalAppearanceEventArgs(
-                GlobalAppearancePhase.Commit,
-                settings.HideHeader,
-                settings.BackgroundColor,
-                settings.BackgroundOpacity,
-                settings.ApplyHeaderToAll,
-                settings.ApplyColorToAll));
-        }
-
-        CreatorStateChanged?.Invoke(this, EventArgs.Empty);
-        if (!IsVisible)
-            Show();
-        SendToDesktopLevel();
-        e.Handled = true;
-    }
-
     private void WallpaperButton_Click(object sender, RoutedEventArgs e)
     {
-        var wallpaperWindow = new WallpaperWindow();
-        wallpaperWindow.Show();
-        BringWindowToFront(wallpaperWindow);
-        SendToDesktopLevel();
+        WallpaperRequested?.Invoke(this, EventArgs.Empty);
         e.Handled = true;
     }
 
@@ -255,17 +195,6 @@ public partial class CreatorWindow : Window
         window.Activate();
         window.Focus();
     }
-
-    private void RaiseGlobalAppearance(
-        GlobalAppearancePhase phase,
-        CreatorSettingsPreviewEventArgs preview) =>
-        GlobalAppearanceChanged?.Invoke(this, new GlobalAppearanceEventArgs(
-            phase,
-            preview.HideHeader,
-            preview.BackgroundColor,
-            preview.BackgroundOpacity,
-            preview.ApplyHeaderToAll,
-            preview.ApplyColorToAll));
 
     private void SendToDesktopLevel()
         => MainWindow.SendWindowToDesktopLevel(_windowHandle);
@@ -290,20 +219,4 @@ public partial class CreatorWindow : Window
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern IntPtr SetWindowLongPtr(IntPtr hWnd, int index, IntPtr newLong);
-
 }
-
-public enum GlobalAppearancePhase
-{
-    Preview,
-    Commit,
-    Cancel
-}
-
-public sealed record GlobalAppearanceEventArgs(
-    GlobalAppearancePhase Phase,
-    bool HideHeader,
-    Color BackgroundColor,
-    double BackgroundOpacity,
-    bool ApplyHeaderToAll,
-    bool ApplyColorToAll);

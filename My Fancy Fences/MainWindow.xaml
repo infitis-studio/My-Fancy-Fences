@@ -76,6 +76,12 @@
                                 Background="{TemplateBinding Background}">
                             <ContentPresenter/>
                         </Border>
+                        <ControlTemplate.Triggers>
+                            <DataTrigger Binding="{Binding IsPlaceholder}" Value="True">
+                                <Setter Property="Width" Value="178"/>
+                                <Setter Property="Height" Value="112"/>
+                            </DataTrigger>
+                        </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
@@ -213,11 +219,36 @@
                                                                  FontSize="{DynamicResource DesktopLabelFontSize}"
                                                                  FontWeight="{DynamicResource IconFontWeight}"
                                                                  Foreground="{DynamicResource IconTextPrimary}"
+                                                                 Opacity="{Binding TextOpacity}"
                                                                  LetterSpacing="{DynamicResource IconLetterSpacing}"
                                                                  TextAlignment="Center"
-                                                                 MaxLines="2"
-                                                                 MaxHeight="{DynamicResource DesktopLabelHeight}"
+                                                                 MaxLines="{Binding LabelMaxLines}"
+                                                                 MaxHeight="{Binding LabelMaxHeight}"
+                                                                 Visibility="{Binding NormalLabelVisibility}"
                                                                  HorizontalAlignment="Stretch"/>
+                                    <TextBlock Grid.Row="1"
+                                               Text="{Binding Name}"
+                                               Margin="0,6,0,0"
+                                               Width="190"
+                                               Foreground="{DynamicResource IconTextPrimary}"
+                                               Opacity="{Binding TextOpacity}"
+                                               FontFamily="{DynamicResource IconFontFamily}"
+                                               FontSize="11"
+                                               FontWeight="{DynamicResource IconFontWeight}"
+                                               TextAlignment="Center"
+                                               TextWrapping="Wrap"
+                                               LineHeight="15"
+                                               Visibility="{Binding PlaceholderLabelVisibility}"
+                                               HorizontalAlignment="Center"/>
+                                    <TextBlock Grid.Row="1"
+                                               Text="{Binding Hint}"
+                                               Margin="2,4,2,0"
+                                               Foreground="#A8D9E0EA"
+                                               FontSize="10.5"
+                                               TextAlignment="Center"
+                                               TextWrapping="Wrap"
+                                               Visibility="{Binding HintVisibility}"
+                                               HorizontalAlignment="Stretch"/>
                                 </Grid>
                             </Button>
                         </DataTemplate>

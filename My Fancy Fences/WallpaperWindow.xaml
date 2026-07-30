@@ -402,9 +402,9 @@
                 <GradientStop Color="#FF111113" Offset="1"/>
             </LinearGradientBrush>
         </Border.Background>
-        <Grid>
+        <Grid x:Name="RootGrid">
             <Grid.RowDefinitions>
-                <RowDefinition Height="46"/>
+                <RowDefinition x:Name="TitleBarRow" Height="46"/>
                 <RowDefinition Height="58"/>
                 <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
@@ -514,7 +514,14 @@
                                      Foreground="#FFE7E2E4"
                                      CaretBrush="#FFE7E2E4"
                                      VerticalContentAlignment="Center"
+                                     TextChanged="SearchTextBox_TextChanged"
                                      KeyDown="SearchTextBox_KeyDown"/>
+                            <TextBlock x:Name="SearchPlaceholderText"
+                                       Grid.Column="1"
+                                       Text="Wpisz tagi..."
+                                       Foreground="#70A9A2A5"
+                                       IsHitTestVisible="False"
+                                       VerticalAlignment="Center"/>
                             <Button Grid.Column="2"
                                     Style="{StaticResource RoundSearchButtonStyle}"
                                     Margin="4,0,0,0"

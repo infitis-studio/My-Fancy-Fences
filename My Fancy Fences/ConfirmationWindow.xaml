@@ -4,7 +4,8 @@
         xmlns:iconPacks="http://metro.mahapps.com/winfx/xaml/iconpacks"
         Title="Potwierdzenie"
         Width="410"
-        Height="220"
+        Height="260"
+        MinHeight="220"
         WindowStyle="None"
         ResizeMode="NoResize"
         WindowStartupLocation="CenterOwner"
@@ -125,14 +126,17 @@
                 </StackPanel>
             </Border>
 
-            <TextBlock x:Name="DialogMessageText"
-                       Grid.Row="1"
-                       Margin="24,20"
-                       Foreground="#FFC7C0C3"
-                       FontSize="13"
-                       LineHeight="20"
-                       TextWrapping="Wrap"
-                       VerticalAlignment="Center"/>
+            <ScrollViewer Grid.Row="1"
+                          Margin="24,18"
+                          VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled">
+                <TextBlock x:Name="DialogMessageText"
+                           Foreground="#FFC7C0C3"
+                           FontSize="13"
+                           LineHeight="20"
+                           TextWrapping="Wrap"
+                           VerticalAlignment="Top"/>
+            </ScrollViewer>
 
             <Border Grid.Row="2"
                     Padding="20,0"

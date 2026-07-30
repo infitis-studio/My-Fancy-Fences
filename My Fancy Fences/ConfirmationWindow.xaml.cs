@@ -20,13 +20,14 @@ public partial class ConfirmationWindow : Window
         DialogTitleText.Text = title;
         DialogMessageText.Text = message;
         ConfirmButton.Content = confirmText;
+        Height = Math.Clamp(220 + message.Length * 0.35, 240, 340);
         if (!string.IsNullOrWhiteSpace(cancelText))
             CancelButton.Content = cancelText;
 
         if (positiveConfirm)
         {
             Width = 440;
-            Height = 240;
+            Height = Math.Max(260, Height);
             DialogIcon.Kind = PackIconLucideKind.Download;
             DialogIcon.Foreground = new SolidColorBrush(Color.FromRgb(0x82, 0xD3, 0xA3));
             HeaderBorder.Background = new LinearGradientBrush(

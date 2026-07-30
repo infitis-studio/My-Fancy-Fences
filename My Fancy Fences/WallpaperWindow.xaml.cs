@@ -24,6 +24,7 @@ public partial class WallpaperWindow : Window
     private bool _isLoading;
     private bool _hasMorePages = true;
     private bool _isCustomMaximized;
+    private readonly bool _isEmbedded;
     private bool _isResizing;
     private int _currentPage;
     private Rect _restoreBounds;
@@ -41,8 +42,13 @@ public partial class WallpaperWindow : Window
         new SolidColorBrush(Color.FromRgb(0x68, 0x72, 0x82))
     ];
 
-    public WallpaperWindow()
+    public WallpaperWindow() : this(false)
     {
+    }
+
+    public WallpaperWindow(bool embedded)
+    {
+        _isEmbedded = embedded;
         InitializeComponent();
         Icon = AppIconProvider.Image;
 
@@ -56,8 +62,16 @@ public partial class WallpaperWindow : Window
         WallpapersItemsControl.ItemsSource = _wallpapers;
         SizeChanged += (_, _) => ApplyRoundedWindowClip();
 
+        if (_isEmbedded)
+        {
+            ConfigureEmbeddedMode();
+        }
+
         Loaded += async (_, _) =>
         {
+            if (_isEmbedded)
+                return;
+
             _isLoaded = true;
             ApplyRoundedWindowClip();
             await ReloadWallpapersAsync();
@@ -65,8 +79,53 @@ public partial class WallpaperWindow : Window
         Closed += (_, _) => ReleaseWallpaperResources();
     }
 
+    public UIElement DetachForEmbedding()
+    {
+        ConfigureEmbeddedMode();
+        var content = (UIElement)Content;
+        Content = null;
+        return content;
+    }
+
+    public async Task InitializeEmbeddedAsync()
+    {
+        if (_isLoaded)
+            return;
+
+        _isLoaded = true;
+        await ReloadWallpapersAsync();
+    }
+
+    public void DisposeEmbedded() => ReleaseWallpaperResources();
+
+    private void ConfigureEmbeddedMode()
+    {
+        TitleBarRow.Height = new GridLength(0);
+        TitleBarBorder.Visibility = Visibility.Collapsed;
+        ResizeGrip.Visibility = Visibility.Collapsed;
+        OuterWindowBorder.CornerRadius = new CornerRadius(8);
+        SidebarBorder.CornerRadius = new CornerRadius(0, 0, 0, 8);
+        OuterWindowBorder.BorderThickness = new Thickness(0);
+        OuterWindowBorder.ClipToBounds = true;
+        WallpapersScrollViewer.Margin = new Thickness(0);
+        ApplyWallpaperComboBoxStyles();
+    }
+
+    private void ApplyWallpaperComboBoxStyles()
+    {
+        if (Resources[typeof(ComboBox)] is not Style comboBoxStyle)
+            return;
+
+        ResolutionComboBox.Style = comboBoxStyle;
+        RatioComboBox.Style = comboBoxStyle;
+        ColorComboBox.Style = comboBoxStyle;
+    }
+
     private void ApplyRoundedWindowClip()
     {
+        if (_isEmbedded)
+            return;
+
         if (Content is not FrameworkElement root || ActualWidth <= 0 || ActualHeight <= 0)
             return;
 
@@ -79,6 +138,9 @@ public partial class WallpaperWindow : Window
 
     private void UpdateWindowChrome()
     {
+        if (_isEmbedded)
+            return;
+
         OuterWindowBorder.CornerRadius = _isCustomMaximized ? new CornerRadius(0) : new CornerRadius(13);
         TitleBarBorder.CornerRadius = _isCustomMaximized ? new CornerRadius(0) : new CornerRadius(12, 12, 0, 0);
         SidebarBorder.CornerRadius = _isCustomMaximized ? new CornerRadius(0) : new CornerRadius(0, 0, 0, 12);
@@ -367,8 +429,22 @@ public partial class WallpaperWindow : Window
         }
 
         SearchTextBox.Clear();
+        UpdateSearchPlaceholder();
         RefreshTagChips();
         await ReloadWallpapersAsync();
+    }
+
+    private void SearchTextBox_TextChanged(object sender, TextChangedEventArgs e) =>
+        UpdateSearchPlaceholder();
+
+    private void UpdateSearchPlaceholder()
+    {
+        if (SearchPlaceholderText is null || SearchTextBox is null)
+            return;
+
+        SearchPlaceholderText.Visibility = string.IsNullOrWhiteSpace(SearchTextBox.Text)
+            ? Visibility.Visible
+            : Visibility.Collapsed;
     }
 
     private async void RemoveTagButton_Click(object sender, RoutedEventArgs e)
@@ -395,9 +471,10 @@ public partial class WallpaperWindow : Window
         if (sender is not FrameworkElement { Tag: WallpaperCard wallpaper })
             return;
 
+        var owner = Window.GetWindow(sender as DependencyObject);
         var detailsWindow = new WallpaperDetailsWindow(wallpaper)
         {
-            Owner = this
+            Owner = owner
         };
         detailsWindow.Show();
         BringWindowToFront(detailsWindow);
@@ -411,13 +488,23 @@ public partial class WallpaperWindow : Window
         window.Focus();
     }
 
-    private void CloseButton_Click(object sender, RoutedEventArgs e) => Close();
+    private void CloseButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_isEmbedded)
+            Close();
+    }
 
-    private void MinimizeButton_Click(object sender, RoutedEventArgs e) =>
-        WindowState = WindowState.Minimized;
+    private void MinimizeButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_isEmbedded)
+            WindowState = WindowState.Minimized;
+    }
 
     private void MaximizeButton_Click(object sender, RoutedEventArgs e)
     {
+        if (_isEmbedded)
+            return;
+
         if (_isCustomMaximized)
         {
             Left = _restoreBounds.Left;
@@ -445,12 +532,18 @@ public partial class WallpaperWindow : Window
 
     private void TitleBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
+        if (_isEmbedded)
+            return;
+
         if (!_isCustomMaximized && e.ButtonState == MouseButtonState.Pressed)
             DragMove();
     }
 
     private void ResizeGrip_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
+        if (_isEmbedded)
+            return;
+
         if (_isCustomMaximized || e.ButtonState != MouseButtonState.Pressed)
             return;
 

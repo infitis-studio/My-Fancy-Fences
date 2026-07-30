@@ -164,6 +164,7 @@ public partial class SettingsWindow : Window
         WidthSlider.Value = Math.Clamp(width, WidthSlider.Minimum, WidthSlider.Maximum);
         HeightSlider.Value = Math.Clamp(height, HeightSlider.Minimum, HeightSlider.Maximum);
         FolderTextBox.Text = sourceFolder;
+        FolderPanel.Visibility = Visibility.Collapsed;
         BackgroundColorTextBox.Text = $"#{backgroundColor.R:X2}{backgroundColor.G:X2}{backgroundColor.B:X2}";
         BorderColorTextBox.Text = $"#{borderColor.R:X2}{borderColor.G:X2}{borderColor.B:X2}";
         FontColorTextBox.Text = $"#{fontColor.R:X2}{fontColor.G:X2}{fontColor.B:X2}";
@@ -229,12 +230,6 @@ public partial class SettingsWindow : Window
         if (!TryReadIconFontColor(out var iconFontColor))
         {
             ValidationText.Text = "Podaj kolor podpisów ikon w formacie HEX, np. #FFFFFF.";
-            return;
-        }
-
-        if (!Directory.Exists(sourceFolder))
-        {
-            ValidationText.Text = "Wybrany folder nie istnieje.";
             return;
         }
 
@@ -668,7 +663,7 @@ public partial class SettingsWindow : Window
         TitleOptionsPanel.Visibility = showGeneral ? Visibility.Visible : Visibility.Collapsed;
         IconOptionsPanel.Visibility = showGeneral ? Visibility.Visible : Visibility.Collapsed;
         DimensionsPanel.Visibility = showGeneral ? Visibility.Visible : Visibility.Collapsed;
-        FolderPanel.Visibility = showGeneral ? Visibility.Visible : Visibility.Collapsed;
+        FolderPanel.Visibility = Visibility.Collapsed;
         BackgroundTabContent.Visibility = selectedTab == "Background" ? Visibility.Visible : Visibility.Collapsed;
         HeaderFontTabContent.Visibility = selectedTab == "Header" ? Visibility.Visible : Visibility.Collapsed;
         IconFontTabContent.Visibility = selectedTab == "Icons" ? Visibility.Visible : Visibility.Collapsed;

@@ -103,7 +103,7 @@
 
             <UniformGrid Grid.Row="1"
                          Rows="1"
-                         Columns="4"
+                         Columns="3"
                          Margin="12,0,12,12"
                          HorizontalAlignment="Center">
                 <Grid>
@@ -148,25 +148,6 @@
                 <Button Style="{StaticResource CreatorTileStyle}"
                         HorizontalAlignment="Center"
                         VerticalAlignment="Center"
-                        Click="AppearanceButton_Click">
-                    <StackPanel VerticalAlignment="Center">
-                        <Border Style="{StaticResource CreatorIconGlowStyle}">
-                            <iconPacks:PackIconLucide Kind="Palette"
-                                                     Width="{DynamicResource CreatorIconSize}"
-                                                     Height="{DynamicResource CreatorIconSize}"
-                                                     Opacity=".72"
-                                                     Foreground="White"
-                                                     HorizontalAlignment="Center"
-                                                     VerticalAlignment="Center"/>
-                        </Border>
-                        <TextBlock Text="Wygląd" Margin="0,8,0,0" FontSize="11" TextAlignment="Center"/>
-                    </StackPanel>
-                </Button>
-                </Grid>
-                <Grid>
-                <Button Style="{StaticResource CreatorTileStyle}"
-                        HorizontalAlignment="Center"
-                        VerticalAlignment="Center"
                         Click="SettingsButton_Click">
                     <StackPanel VerticalAlignment="Center">
                         <Border Style="{StaticResource CreatorIconGlowStyle}">
@@ -178,7 +159,7 @@
                                                      HorizontalAlignment="Center"
                                                      VerticalAlignment="Center"/>
                         </Border>
-                        <TextBlock Text="Ustawienia" Margin="0,8,0,0" FontSize="11" TextAlignment="Center"/>
+                        <TextBlock Text="Zarządzaj" Margin="0,8,0,0" FontSize="11" TextAlignment="Center"/>
                     </StackPanel>
                 </Button>
                 </Grid>
