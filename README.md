@@ -6,7 +6,7 @@
   <p>
     <img src="https://img.shields.io/badge/platform-Windows-0078D4?style=flat-square&logo=windows11&logoColor=white" alt="Windows" />
     <img src="https://img.shields.io/badge/.NET-10.0-512BD4?style=flat-square&logo=dotnet&logoColor=white" alt=".NET 10" />
-    <img src="https://img.shields.io/github/license/infitis-studio/my-fancy-fences?style=flat-square&color=2ea44f" alt="MIT License" />
+    <img src="https://img.shields.io/badge/license-MIT-2ea44f?style=flat-square" alt="MIT License" />
     <img src="https://img.shields.io/github/issues/infitis-studio/my-fancy-fences?style=flat-square&color=e3b341" alt="Open issues" />
   </p>
 
