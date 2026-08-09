@@ -28,7 +28,9 @@ public partial class ConfirmationWindow : Window
         {
             Width = 440;
             Height = Math.Max(260, Height);
-            DialogIcon.Kind = PackIconLucideKind.Download;
+            DialogIcon.Kind = confirmText.Contains("Dodaj", StringComparison.CurrentCultureIgnoreCase)
+                ? PackIconLucideKind.Plus
+                : PackIconLucideKind.Download;
             DialogIcon.Foreground = new SolidColorBrush(Color.FromRgb(0x82, 0xD3, 0xA3));
             HeaderBorder.Background = new LinearGradientBrush(
                 Color.FromRgb(0x20, 0x35, 0x29),

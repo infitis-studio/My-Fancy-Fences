@@ -57,27 +57,43 @@ public static class ConfigurationArchiveService
         using var archive = ZipFile.Open(archivePath, ZipArchiveMode.Create);
         WriteTextEntry(archive, "config/settings.json", settingsJson);
 
-        var languagePath = Path.Combine(Path.GetDirectoryName(settingsPath)!, "language.txt");
-        if (File.Exists(languagePath))
-            archive.CreateEntryFromFile(languagePath, "config/language.txt", CompressionLevel.Optimal);
+        var layoutsPath = Path.Combine(Path.GetDirectoryName(settingsPath)!, "layouts.json");
+        if (File.Exists(layoutsPath))
+            archive.CreateEntryFromFile(layoutsPath, "config/layouts.json", CompressionLevel.Optimal);
 
-        foreach (var panel in panels)
+        if (File.Exists(ShortcutLibraryService.ShortcutMetadataFilePath))
+            archive.CreateEntryFromFile(
+                ShortcutLibraryService.ShortcutMetadataFilePath,
+                "config/shortcuts.json",
+                CompressionLevel.Optimal);
+
+        if (includeShortcuts && Directory.Exists(ShortcutLibraryService.IconsDirectory))
         {
-            var archiveFolder = $"shortcuts/panel-{panel.Index:D3}/";
-            manifestPanels.Add(new ArchivePanel(panel.Index, panel.Title, archiveFolder));
-            if (!includeShortcuts || !Directory.Exists(panel.SourceFolder))
-                continue;
+            foreach (var filePath in Directory.EnumerateFiles(ShortcutLibraryService.IconsDirectory, "*.png", SearchOption.TopDirectoryOnly))
+            {
+                archive.CreateEntryFromFile(
+                    filePath,
+                    "icons/" + Path.GetFileName(filePath),
+                    CompressionLevel.Optimal);
+            }
+        }
 
-            foreach (var filePath in Directory.EnumerateFiles(panel.SourceFolder, "*", SearchOption.TopDirectoryOnly)
+        if (includeShortcuts && Directory.Exists(ShortcutLibraryService.ShortcutsDirectory))
+        {
+            foreach (var filePath in Directory
+                         .EnumerateFiles(ShortcutLibraryService.ShortcutsDirectory, "*", SearchOption.TopDirectoryOnly)
                          .Where(path => ShortcutExtensions.Contains(Path.GetExtension(path))))
             {
                 archive.CreateEntryFromFile(
                     filePath,
-                    archiveFolder + Path.GetFileName(filePath),
+                    "shortcuts/" + Path.GetFileName(filePath),
                     CompressionLevel.Optimal);
                 shortcutCount++;
             }
         }
+
+        foreach (var panel in panels)
+            manifestPanels.Add(new ArchivePanel(panel.Index, panel.Title, string.Empty));
 
         var manifest = new ArchiveManifest(
             ArchiveFormatVersion,
@@ -114,31 +130,39 @@ public static class ConfigurationArchiveService
         var settings = JsonNode.Parse(settingsJson)?.AsObject()
             ?? throw new InvalidDataException("Konfiguracja w archiwum jest nieprawidłowa.");
 
+        var settingsDirectory = Path.GetDirectoryName(settingsPath)!;
+        Directory.CreateDirectory(settingsDirectory);
+
         var importedShortcutCount = 0;
         if (importShortcuts && manifest.IncludesShortcuts)
         {
-            foreach (var panel in manifest.Panels)
+            Directory.CreateDirectory(ShortcutLibraryService.ShortcutsDirectory);
+            Directory.CreateDirectory(ShortcutLibraryService.IconsDirectory);
+            var shortcutEntries = archive.Entries.Where(entry =>
+                entry.FullName.StartsWith("shortcuts/", StringComparison.OrdinalIgnoreCase) &&
+                !string.IsNullOrWhiteSpace(entry.Name) &&
+                ShortcutExtensions.Contains(Path.GetExtension(entry.Name))).ToList();
+
+            foreach (var entry in shortcutEntries)
             {
-                var panelFolder = PanelStorageService.GetPanelFolder(panel.Index, panel.Title);
-                Directory.CreateDirectory(panelFolder);
-                foreach (var entry in archive.Entries.Where(entry =>
-                             entry.FullName.StartsWith(panel.ArchiveFolder, StringComparison.OrdinalIgnoreCase) &&
-                             !string.IsNullOrWhiteSpace(entry.Name)))
-                {
-                    if (!ShortcutExtensions.Contains(Path.GetExtension(entry.Name)))
-                        continue;
-
-                    var targetPath = Path.Combine(panelFolder, Path.GetFileName(entry.Name));
-                    entry.ExtractToFile(targetPath, overwrite: true);
-                    importedShortcutCount++;
-                }
-
-                SetPanelSourceFolder(settings, panel.Index, panelFolder);
+                var targetPath = Path.Combine(ShortcutLibraryService.ShortcutsDirectory, Path.GetFileName(entry.Name));
+                entry.ExtractToFile(targetPath, overwrite: true);
+                importedShortcutCount++;
             }
+
+            foreach (var entry in archive.Entries.Where(entry =>
+                         entry.FullName.StartsWith("icons/", StringComparison.OrdinalIgnoreCase) &&
+                         !string.IsNullOrWhiteSpace(entry.Name) &&
+                         string.Equals(Path.GetExtension(entry.Name), ".png", StringComparison.OrdinalIgnoreCase)))
+            {
+                entry.ExtractToFile(
+                    Path.Combine(ShortcutLibraryService.IconsDirectory, Path.GetFileName(entry.Name)),
+                    overwrite: true);
+            }
+
+            settings["SourceFolder"] = ShortcutLibraryService.ShortcutsDirectory;
         }
 
-        var settingsDirectory = Path.GetDirectoryName(settingsPath)!;
-        Directory.CreateDirectory(settingsDirectory);
         if (File.Exists(settingsPath))
         {
             var desktopDirectory = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
@@ -152,9 +176,13 @@ public static class ConfigurationArchiveService
         File.WriteAllText(temporarySettingsPath, settings.ToJsonString(JsonOptions));
         File.Move(temporarySettingsPath, settingsPath, overwrite: true);
 
-        var languageEntry = archive.GetEntry("config/language.txt");
-        if (languageEntry is not null)
-            languageEntry.ExtractToFile(Path.Combine(settingsDirectory, "language.txt"), overwrite: true);
+        var layoutsEntry = archive.GetEntry("config/layouts.json");
+        if (layoutsEntry is not null)
+            layoutsEntry.ExtractToFile(Path.Combine(settingsDirectory, "layouts.json"), overwrite: true);
+
+        var shortcutMetadataEntry = archive.GetEntry("config/shortcuts.json");
+        if (shortcutMetadataEntry is not null)
+            shortcutMetadataEntry.ExtractToFile(ShortcutLibraryService.ShortcutMetadataFilePath, overwrite: true);
 
         return new ConfigurationArchiveResult(
             archivePath,

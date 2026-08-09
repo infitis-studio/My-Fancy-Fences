@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Globalization;
 using System.IO;
+using System.Text.Json.Nodes;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
@@ -10,7 +11,12 @@ namespace My_Fancy_Fences;
 
 public static class LocalizationService
 {
-    private static readonly string LanguageFilePath = Path.Combine(
+    private static readonly string SettingsFilePath = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "My Fancy Fences",
+        "settings.json");
+
+    private static readonly string LegacyLanguageFilePath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "My Fancy Fences",
         "language.txt");
@@ -38,9 +44,7 @@ public static class LocalizationService
     {
         try
         {
-            var saved = File.Exists(LanguageFilePath)
-                ? File.ReadAllText(LanguageFilePath).Trim()
-                : string.Empty;
+            var saved = ReadSavedLanguage();
             if (Languages.Any(language => language.Code == saved))
                 CurrentLanguage = saved;
             else
@@ -75,8 +79,7 @@ public static class LocalizationService
         CurrentLanguage = code;
         try
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(LanguageFilePath)!);
-            File.WriteAllText(LanguageFilePath, code);
+            SaveLanguageToSettings(code);
         }
         catch
         {
@@ -85,6 +88,55 @@ public static class LocalizationService
 
         foreach (Window window in Application.Current.Windows)
             Apply(window);
+    }
+
+    public static void DeleteLegacyLanguageFile()
+    {
+        try
+        {
+            if (File.Exists(LegacyLanguageFilePath))
+                File.Delete(LegacyLanguageFilePath);
+        }
+        catch
+        {
+        }
+    }
+
+    private static string ReadSavedLanguage()
+    {
+        var language = ReadLanguageFromSettings();
+        if (!string.IsNullOrWhiteSpace(language))
+            return language;
+
+        return File.Exists(LegacyLanguageFilePath)
+            ? File.ReadAllText(LegacyLanguageFilePath).Trim()
+            : string.Empty;
+    }
+
+    private static string? ReadLanguageFromSettings()
+    {
+        if (!File.Exists(SettingsFilePath))
+            return null;
+
+        var settings = JsonNode.Parse(File.ReadAllText(SettingsFilePath))?.AsObject();
+        return settings?["Language"]?.GetValue<string>();
+    }
+
+    private static void SaveLanguageToSettings(string code)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(SettingsFilePath)!);
+        JsonObject settings;
+        if (File.Exists(SettingsFilePath))
+        {
+            settings = JsonNode.Parse(File.ReadAllText(SettingsFilePath))?.AsObject() ?? [];
+        }
+        else
+        {
+            settings = [];
+        }
+
+        settings["Language"] = code;
+        File.WriteAllText(SettingsFilePath, settings.ToJsonString(new() { WriteIndented = true }));
     }
 
     public static string T(string source)
@@ -274,6 +326,29 @@ public static class LocalizationService
         Add("Pobierz", "Download", "Herunterladen", "Télécharger", "Descargar", "Scarica", "Baixar", "Downloaden", "Stáhnout", "Завантажити", "Скачать", "下载");
         Add("Ustaw jako tapeta", "Set as wallpaper", "Als Hintergrund festlegen", "Définir comme fond d’écran", "Establecer como fondo", "Imposta come sfondo", "Definir como papel de parede", "Instellen als achtergrond", "Nastavit jako tapetu", "Установити як шпалери", "Установить как обои", "设为壁纸");
         Add("Spróbuj ponownie", "Try again", "Erneut versuchen", "Réessayer", "Intentar de nuevo", "Riprova", "Tentar novamente", "Opnieuw proberen", "Zkusit znovu", "Спробувати знову", "Повторить", "重试");
+        Add("Duplikuj", "Duplicate", "Duplizieren", "Dupliquer", "Duplicar", "Duplica", "Duplicar", "Dupliceren", "Duplikovat", "Дублювати", "Дублировать", "复制");
+        Add("Zmień nazwę", "Rename", "Umbenennen", "Renommer", "Cambiar nombre", "Rinomina", "Renomear", "Naam wijzigen", "Přejmenovat", "Перейменувати", "Переименовать", "重命名");
+        Add("Zmień nazwę układu", "Rename layout", "Layout umbenennen", "Renommer la disposition", "Cambiar nombre del diseño", "Rinomina layout", "Renomear layout", "Indeling hernoemen", "Přejmenovat rozložení", "Перейменувати макет", "Переименовать макет", "重命名布局");
+        Add("Nowa nazwa", "New name", "Neuer Name", "Nouveau nom", "Nuevo nombre", "Nuovo nome", "Novo nome", "Nieuwe naam", "Nový název", "Нова назва", "Новое имя", "新名称");
+        Add("Układy paneli", "Panel layouts", "Panel-Layouts", "Dispositions des panneaux", "Diseños de paneles", "Layout pannelli", "Layouts dos painéis", "Paneelindelingen", "Rozložení panelů", "Макети панелей", "Макеты панелей", "面板布局");
+        Add("Zarządzaj panelami", "Manage panels", "Panels verwalten", "Gérer les panneaux", "Gestionar paneles", "Gestisci pannelli", "Gerenciar painéis", "Panelen beheren", "Spravovat panely", "Керувати панелями", "Управлять панелями", "管理面板");
+        Add("Zarządzaj układami", "Manage layouts", "Layouts verwalten", "Gérer les dispositions", "Gestionar diseños", "Gestisci layout", "Gerenciar layouts", "Indelingen beheren", "Spravovat rozložení", "Керувати макетами", "Управлять макетами", "管理布局");
+        Add("Zarządzanie", "Management", "Verwaltung", "Gestion", "Gestión", "Gestione", "Gerenciamento", "Beheer", "Správa", "Керування", "Управление", "管理");
+        Add("Zarządzaj", "Manage", "Verwalten", "Gérer", "Gestionar", "Gestisci", "Gerenciar", "Beheren", "Spravovat", "Керувати", "Управлять", "管理");
+        Add("Zapisuj i przełączaj różne rozmieszczenia paneli.", "Save and switch between different panel arrangements.", "Speichere und wechsle zwischen verschiedenen Panel-Anordnungen.", "Enregistrez et changez différentes dispositions de panneaux.", "Guarda y cambia entre distintas disposiciones de paneles.", "Salva e cambia diverse disposizioni dei pannelli.", "Salve e alterne entre diferentes organizações de painéis.", "Sla verschillende paneelindelingen op en wissel ertussen.", "Ukládejte a přepínejte různá rozložení panelů.", "Зберігайте та перемикайте різні розташування панелей.", "Сохраняйте и переключайте разные расположения панелей.", "保存并切换不同的面板排列。");
+        Add("Zmień nazwę albo usuń zapisany układ.", "Rename or delete a saved layout.", "Benenne ein gespeichertes Layout um oder lösche es.", "Renommez ou supprimez une disposition enregistrée.", "Cambia el nombre o elimina un diseño guardado.", "Rinomina o elimina un layout salvato.", "Renomeie ou exclua um layout salvo.", "Hernoem of verwijder een opgeslagen indeling.", "Přejmenujte nebo odstraňte uložené rozložení.", "Перейменуйте або видаліть збережений макет.", "Переименуйте или удалите сохранённый макет.", "重命名或删除已保存的布局。");
+        Add("Dodaj nowy układ", "Add new layout", "Neues Layout hinzufügen", "Ajouter une disposition", "Añadir diseño", "Aggiungi layout", "Adicionar layout", "Nieuwe indeling toevoegen", "Přidat nové rozložení", "Додати новий макет", "Добавить новый макет", "添加新布局");
+        Add("Dodaj panel", "Add panel", "Panel hinzufügen", "Ajouter un panneau", "Añadir panel", "Aggiungi pannello", "Adicionar painel", "Paneel toevoegen", "Přidat panel", "Додати панель", "Добавить панель", "添加面板");
+        Add("Utwórz nowy panel z własnymi skrótami", "Create a new panel with your own shortcuts", "Erstelle ein neues Panel mit eigenen Verknüpfungen", "Créez un nouveau panneau avec vos raccourcis", "Crea un panel nuevo con tus accesos directos", "Crea un nuovo pannello con le tue scorciatoie", "Crie um novo painel com seus atalhos", "Maak een nieuw paneel met je eigen snelkoppelingen", "Vytvořit nový panel s vlastními zástupci", "Створіть нову панель із власними ярликами", "Создайте новую панель со своими ярлыками", "创建包含自定义快捷方式的新面板");
+        Add("Nowy układ", "New layout", "Neues Layout", "Nouvelle disposition", "Nuevo diseño", "Nuovo layout", "Novo layout", "Nieuwe indeling", "Nové rozložení", "Новий макет", "Новый макет", "新布局");
+        Add("Domyślny", "Default", "Standard", "Par défaut", "Predeterminado", "Predefinito", "Padrão", "Standaard", "Výchozí", "Типовий", "По умолчанию", "默认");
+        Add("aktywny", "active", "aktiv", "actif", "activo", "attivo", "ativo", "actief", "aktivní", "активний", "активный", "活动");
+        Add("kopia", "copy", "Kopie", "copie", "copia", "copia", "cópia", "kopie", "kopie", "копія", "копия", "副本");
+        Add("Usuń", "Delete", "Löschen", "Supprimer", "Eliminar", "Elimina", "Excluir", "Verwijderen", "Odstranit", "Видалити", "Удалить", "删除");
+        Add("Usunąć układ?", "Delete layout?", "Layout löschen?", "Supprimer la disposition ?", "¿Eliminar diseño?", "Eliminare il layout?", "Excluir layout?", "Indeling verwijderen?", "Odstranit rozložení?", "Видалити макет?", "Удалить макет?", "删除布局？");
+        Add("Czy na pewno usunąć układ", "Are you sure you want to delete layout", "Möchtest du das Layout wirklich löschen", "Voulez-vous vraiment supprimer la disposition", "¿Seguro que quieres eliminar el diseño", "Vuoi davvero eliminare il layout", "Tem certeza de que deseja excluir o layout", "Weet je zeker dat je de indeling wilt verwijderen", "Opravdu chcete odstranit rozložení", "Ви справді хочете видалити макет", "Вы уверены, что хотите удалить макет", "确定要删除布局");
+        Add("Tej operacji nie można cofnąć.", "This action cannot be undone.", "Diese Aktion kann nicht rückgängig gemacht werden.", "Cette action est irréversible.", "Esta acción no se puede deshacer.", "Questa operazione non può essere annullata.", "Esta ação não pode ser desfeita.", "Deze actie kan niet ongedaan worden gemaakt.", "Tuto akci nelze vrátit zpět.", "Цю дію не можна скасувати.", "Это действие нельзя отменить.", "此操作无法撤销。");
+
         return result;
     }
 }

@@ -97,6 +97,7 @@ public partial class MainWindow : Window
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "My Fancy Fences",
         "settings.json");
+    private static readonly string LayoutsFilePath = ShortcutLibraryService.LayoutsFilePath;
     private bool _isDragging;
     private Point _dragStartScreenPosition;
     private double _dragStartLeft;
@@ -121,18 +122,25 @@ public partial class MainWindow : Window
     private bool? _globalPreviewOriginalHeaderHidden;
     private Color? _globalPreviewOriginalBackgroundColor;
     private double? _globalPreviewOriginalBackgroundOpacity;
-    private Dictionary<MainWindow, (bool HideHeader, Color BackgroundColor, double BackgroundOpacity)>? _globalPreviewOriginalPanelAppearances;
+    private Dictionary<MainWindow, GlobalPanelAppearanceSnapshot>? _globalPreviewOriginalPanelAppearances;
     private (bool HideHeader, Color BackgroundColor, double BackgroundOpacity)? _globalPreviewOriginalCreatorAppearance;
     private readonly bool _isPrimaryWindow;
     private readonly int _newPanelIndex;
     private readonly Action? _requestHostSave;
     private readonly List<MainWindow> _additionalPanels = [];
     private List<SavedPanelSettings> _savedAdditionalPanels = [];
+    private List<SavedLayoutSettings> _savedLayouts = [];
+    private string? _activeLayoutId;
+    private string? _visibleLayoutId;
     private bool _isApplicationClosing;
     private bool _skipSaveOnShutdown;
+    private bool _isApplyingLayout;
     private bool _isPendingCreation;
+    private List<string> _shortcutIds = [];
     private FileSystemWatcher? _sourceFolderWatcher;
     private string? _contextItemPath;
+    private string? _contextShortcutId;
+    private string? _contextItemName;
     private IntPtr _itemPopupMouseHook;
     private LowLevelMouseProc? _itemPopupMouseHookProc;
     private CancellationTokenSource? _itemsLoadCancellation;
@@ -147,7 +155,7 @@ public partial class MainWindow : Window
         _isPrimaryWindow = isPrimaryWindow;
         _requestHostSave = requestHostSave;
         _newPanelIndex = isPrimaryWindow ? 0 : ++_newPanelCount;
-        _sourceFolder = PanelStorageService.GetPanelFolder(_newPanelIndex, isPrimaryWindow ? "Main" : "Panel");
+        _sourceFolder = ShortcutLibraryService.ShortcutsDirectory;
         _folderRefreshTimer = new System.Windows.Threading.DispatcherTimer
         {
             Interval = TimeSpan.FromMilliseconds(350)
@@ -207,7 +215,17 @@ public partial class MainWindow : Window
             if (!_showMainPanel)
                 Hide();
 
-            RestoreAdditionalPanels();
+            var hadSavedLayouts = _savedLayouts.Count > 0;
+            if (!hadSavedLayouts)
+                RestoreAdditionalPanels();
+
+            EnsureLayoutDefaults();
+            if (hadSavedLayouts && !string.IsNullOrWhiteSpace(_activeLayoutId))
+                ApplySavedLayout(_activeLayoutId);
+            else
+                SaveSettings();
+            CleanupLegacyPanelFolders();
+            LocalizationService.DeleteLegacyLanguageFile();
 
             await Task.Delay(250);
             if (IsLoaded)
@@ -609,36 +627,44 @@ public partial class MainWindow : Window
 
     private void LoadDesktopItems()
     {
-        _sourceFolder = PanelStorageService.EnsurePanelFolder(
-            _sourceFolder,
-            _newPanelIndex,
-            TitleText.Text);
+        if (_shortcutIds.Count == 0 && !IsShortcutLibraryFolder(_sourceFolder))
+            _shortcutIds = ShortcutLibraryService.ImportFolder(_sourceFolder);
+        _sourceFolder = ShortcutLibraryService.ShortcutsDirectory;
         StartWatchingSourceFolder();
 
         _itemsLoadCancellation?.Cancel();
         _itemsLoadCancellation?.Dispose();
         _itemsLoadCancellation = new CancellationTokenSource();
-        _ = LoadDesktopItemsAsync(_sourceFolder, _itemsLoadCancellation.Token);
+        _ = LoadDesktopItemsAsync(_shortcutIds.ToList(), _itemsLoadCancellation.Token);
     }
 
-    private async Task LoadDesktopItemsAsync(string sourceFolder, CancellationToken cancellationToken)
+    private async Task LoadDesktopItemsAsync(List<string> shortcutIds, CancellationToken cancellationToken)
     {
         try
         {
             var entries = await Task.Run(() =>
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                var items = Directory.EnumerateFileSystemEntries(sourceFolder)
-                    .Select(path => Directory.Exists(path)
-                        ? (FileSystemInfo)new DirectoryInfo(path)
-                        : new FileInfo(path))
-                    .Where(item => !_hideFolders || item is not DirectoryInfo)
-                    .OrderByDescending(item => item is DirectoryInfo)
-                    .ThenBy(item => item.Name, StringComparer.CurrentCultureIgnoreCase)
+                var items = shortcutIds
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .Select(id => new { Id = id, Path = ShortcutLibraryService.GetShortcutPath(id) })
+                    .Where(item => File.Exists(item.Path) || Directory.Exists(item.Path))
+                    .Select(item => new
+                    {
+                        item.Id,
+                        Info = Directory.Exists(item.Path)
+                            ? (FileSystemInfo)new DirectoryInfo(item.Path)
+                            : new FileInfo(item.Path)
+                    })
+                    .Where(item => !_hideFolders || item.Info is not DirectoryInfo)
+                    .OrderByDescending(item => item.Info is DirectoryInfo)
+                    .ThenBy(item => item.Info.Name, StringComparer.CurrentCultureIgnoreCase)
                     .Take(24)
                     .ToList();
 
-                var desktopItems = items.Select(CreateDesktopItem).ToList();
+                var desktopItems = items
+                    .Select(item => CreateDesktopItem(item.Info, item.Id))
+                    .ToList();
                 if (desktopItems.Count == 0)
                 {
                     desktopItems.Add(new DesktopItem(
@@ -650,8 +676,7 @@ public partial class MainWindow : Window
                 return desktopItems;
             }, cancellationToken);
 
-            if (!cancellationToken.IsCancellationRequested &&
-                string.Equals(sourceFolder, _sourceFolder, StringComparison.OrdinalIgnoreCase))
+            if (!cancellationToken.IsCancellationRequested)
             {
                 DesktopItemsControl.ItemsSource = entries;
                 DesktopItemsControl.HorizontalAlignment = entries.Count == 1 && entries[0].IsPlaceholder
@@ -660,7 +685,7 @@ public partial class MainWindow : Window
                 DesktopItemsControl.VerticalAlignment = entries.Count == 1 && entries[0].IsPlaceholder
                     ? VerticalAlignment.Center
                     : VerticalAlignment.Stretch;
-                await LoadDesktopItemIconsAsync(entries, sourceFolder, cancellationToken);
+                await LoadDesktopItemIconsAsync(entries, ShortcutLibraryService.ShortcutsDirectory, cancellationToken);
             }
         }
         catch (OperationCanceledException)
@@ -668,12 +693,48 @@ public partial class MainWindow : Window
         }
         catch
         {
-            if (!cancellationToken.IsCancellationRequested &&
-                string.Equals(sourceFolder, _sourceFolder, StringComparison.OrdinalIgnoreCase))
-            {
+            if (!cancellationToken.IsCancellationRequested)
                 DesktopItemsControl.ItemsSource = Array.Empty<DesktopItem>();
-            }
         }
+    }
+
+    private List<DesktopItem> BuildDesktopItems(
+        List<string> shortcutIds,
+        CancellationToken cancellationToken,
+        bool preloadIcons = true)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var items = shortcutIds
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Select(id => new { Id = id, Path = ShortcutLibraryService.GetShortcutPath(id) })
+            .Where(item => File.Exists(item.Path) || Directory.Exists(item.Path))
+            .Select(item => new
+            {
+                item.Id,
+                Info = Directory.Exists(item.Path)
+                    ? (FileSystemInfo)new DirectoryInfo(item.Path)
+                    : new FileInfo(item.Path)
+            })
+            .Where(item => !_hideFolders || item.Info is not DirectoryInfo)
+            .OrderByDescending(item => item.Info is DirectoryInfo)
+            .ThenBy(item => item.Info.Name, StringComparer.CurrentCultureIgnoreCase)
+            .Take(24)
+            .ToList();
+
+        var desktopItems = items
+            .Select(item => CreateDesktopItem(item.Info, item.Id))
+            .ToList();
+        if (preloadIcons)
+            PreloadDesktopItemIcons(desktopItems, cancellationToken);
+        if (desktopItems.Count == 0)
+        {
+            desktopItems.Add(new DesktopItem(
+                $"Aby dodaÄ‡ skrĂłt kliknij tutaj{Environment.NewLine}albo przeciÄ…gnij ikonÄ™",
+                AddShortcutPlaceholderPath,
+                CreateAddShortcutIcon()));
+        }
+
+        return desktopItems;
     }
 
     private async Task LoadDesktopItemIconsAsync(
@@ -688,6 +749,13 @@ public partial class MainWindow : Window
             ImageSource? icon;
             try
             {
+                var cachedShortcutIcon = GetCachedShortcutIcon(item.ShortcutId);
+                if (cachedShortcutIcon is not null)
+                {
+                    item.Icon = cachedShortcutIcon;
+                    continue;
+                }
+
                 var iconTask = Task.Run(() => GetShellIcon(item.Path), cancellationToken);
                 var completedTask = await Task.WhenAny(
                     iconTask,
@@ -722,8 +790,82 @@ public partial class MainWindow : Window
                 continue;
 
             item.Icon = icon;
+            SaveShortcutIcon(item.ShortcutId, item.Icon);
             await Task.Yield();
         }
+    }
+
+    private static void PreloadDesktopItemIcons(
+        IEnumerable<DesktopItem> entries,
+        CancellationToken cancellationToken)
+    {
+        foreach (var item in entries.Where(item => item.Icon is null && !item.IsPlaceholder))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            try
+            {
+                item.Icon = GetCachedShortcutIcon(item.ShortcutId) ??
+                            GetShellIcon(item.Path) ??
+                            GetGenericShellIcon(item.Path);
+                SaveShortcutIcon(item.ShortcutId, item.Icon);
+            }
+            catch (Exception exception)
+            {
+                LogIconLoadError(item.Path, exception);
+            }
+        }
+    }
+
+    private Task WarmLayoutIconCacheAsync()
+    {
+        var shortcutIds = _savedLayouts
+            .SelectMany(GetLayoutShortcutIds)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        return Task.Run(() =>
+        {
+            foreach (var shortcutId in shortcutIds)
+                WarmShortcutIcon(shortcutId);
+        });
+    }
+
+    private static void WarmShortcutIcons(IEnumerable<string> shortcutIds)
+    {
+        foreach (var shortcutId in shortcutIds.Distinct(StringComparer.OrdinalIgnoreCase))
+            WarmShortcutIcon(shortcutId);
+    }
+
+    private static void WarmShortcutIcon(string shortcutId)
+    {
+        if (string.IsNullOrWhiteSpace(shortcutId))
+            return;
+
+        try
+        {
+            var path = ShortcutLibraryService.GetShortcutPath(shortcutId);
+            if (File.Exists(path) || Directory.Exists(path))
+            {
+                var icon = GetCachedShortcutIcon(shortcutId) ??
+                           GetShellIcon(path) ??
+                           GetGenericShellIcon(path);
+                SaveShortcutIcon(shortcutId, icon);
+            }
+        }
+        catch
+        {
+        }
+    }
+
+    private static IEnumerable<string> GetLayoutShortcutIds(SavedLayoutSettings layout)
+    {
+        foreach (var shortcutId in layout.MainPanel.ShortcutIds ?? [])
+            yield return shortcutId;
+
+        foreach (var panel in layout.AdditionalPanels)
+        foreach (var shortcutId in panel.ShortcutIds ?? [])
+            yield return shortcutId;
     }
 
     private static void LogIconLoadError(string path, Exception exception)
@@ -788,12 +930,19 @@ public partial class MainWindow : Window
         });
     }
 
-    private static DesktopItem CreateDesktopItem(FileSystemInfo item)
+    private static DesktopItem CreateDesktopItem(FileSystemInfo item, string? shortcutId = null)
     {
         var isDirectory = item is DirectoryInfo;
-        var displayName = isDirectory ? item.Name : Path.GetFileNameWithoutExtension(item.Name);
-        IconCache.TryGetValue(item.FullName, out var cachedIcon);
-        return new DesktopItem(displayName, item.FullName, cachedIcon);
+        var displayName = string.IsNullOrWhiteSpace(shortcutId)
+            ? isDirectory ? item.Name : Path.GetFileNameWithoutExtension(item.Name)
+            : ShortcutLibraryService.GetShortcutDisplayName(shortcutId, item.FullName);
+        var cachedIcon = string.IsNullOrWhiteSpace(shortcutId)
+            ? null
+            : GetCachedShortcutIcon(shortcutId);
+        cachedIcon ??= IconCache.TryGetValue(item.FullName, out var shellCachedIcon)
+            ? shellCachedIcon
+            : null;
+        return new DesktopItem(displayName, item.FullName, cachedIcon, shortcutId: shortcutId);
     }
 
     private static ImageSource CreateAddShortcutIcon()
@@ -828,6 +977,55 @@ public partial class MainWindow : Window
         if (icon is not null)
             CacheIcon(path, icon);
         return icon;
+    }
+
+    private static ImageSource? GetCachedShortcutIcon(string shortcutId)
+    {
+        if (string.IsNullOrWhiteSpace(shortcutId))
+            return null;
+
+        var iconPath = ShortcutLibraryService.GetIconPath(shortcutId);
+        if (IconCache.TryGetValue(iconPath, out var cachedIcon))
+            return cachedIcon;
+
+        if (!File.Exists(iconPath))
+            return null;
+
+        try
+        {
+            var bitmap = new BitmapImage();
+            bitmap.BeginInit();
+            bitmap.CacheOption = BitmapCacheOption.OnLoad;
+            bitmap.UriSource = new Uri(iconPath, UriKind.Absolute);
+            bitmap.EndInit();
+            bitmap.Freeze();
+            CacheIcon(iconPath, bitmap);
+            return bitmap;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static void SaveShortcutIcon(string shortcutId, ImageSource? icon)
+    {
+        if (string.IsNullOrWhiteSpace(shortcutId) || icon is not BitmapSource bitmapSource)
+            return;
+
+        try
+        {
+            var iconPath = ShortcutLibraryService.GetIconPath(shortcutId);
+            Directory.CreateDirectory(Path.GetDirectoryName(iconPath)!);
+            using var stream = File.Create(iconPath);
+            var encoder = new PngBitmapEncoder();
+            encoder.Frames.Add(BitmapFrame.Create(bitmapSource));
+            encoder.Save(stream);
+            IconCache[iconPath] = bitmapSource;
+        }
+        catch
+        {
+        }
     }
 
     private static void CacheIcon(string path, ImageSource icon)
@@ -929,7 +1127,7 @@ public partial class MainWindow : Window
 
     private void DesktopItem_MouseRightButtonUp(object sender, MouseButtonEventArgs e)
     {
-        if (sender is not FrameworkElement { Tag: string path })
+        if (sender is not FrameworkElement { Tag: string path, DataContext: DesktopItem item })
             return;
 
         if (string.Equals(path, AddShortcutPlaceholderPath, StringComparison.Ordinal))
@@ -937,6 +1135,8 @@ public partial class MainWindow : Window
 
         ItemActionsPopup.IsOpen = false;
         _contextItemPath = path;
+        _contextShortcutId = item.ShortcutId;
+        _contextItemName = item.Name;
         ItemActionsPopup.IsOpen = true;
         InstallItemPopupMouseHook();
         e.Handled = true;
@@ -985,6 +1185,8 @@ public partial class MainWindow : Window
     {
         RemoveItemPopupMouseHook();
         _contextItemPath = null;
+        _contextShortcutId = null;
+        _contextItemName = null;
     }
 
     private void RemoveItemPopupMouseHook()
@@ -1001,16 +1203,21 @@ public partial class MainWindow : Window
     private void DeleteDesktopItemMenuItem_Click(object sender, RoutedEventArgs e)
     {
         var path = _contextItemPath;
+        var shortcutId = _contextShortcutId;
+        var displayName = _contextItemName;
         ItemActionsPopup.IsOpen = false;
         _contextItemPath = null;
+        _contextShortcutId = null;
+        _contextItemName = null;
 
-        if (string.IsNullOrWhiteSpace(path) || (!File.Exists(path) && !Directory.Exists(path)))
-        {
+        if (string.IsNullOrWhiteSpace(path))
             return;
-        }
 
-        var itemName = Path.GetFileName(
+        var fallbackName = Path.GetFileNameWithoutExtension(
             path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        var itemName = string.IsNullOrWhiteSpace(displayName)
+            ? fallbackName
+            : displayName;
         var confirmation = new ConfirmationWindow(
             "Usunąć ikonę?",
             $"Czy przenieść „{itemName}” do Kosza?\n\nElement zniknie z tego panelu.",
@@ -1033,23 +1240,14 @@ public partial class MainWindow : Window
 
         try
         {
-            if (Directory.Exists(path))
-            {
-                Microsoft.VisualBasic.FileIO.FileSystem.DeleteDirectory(
-                    path,
-                    Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs,
-                    Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
-            }
-            else
-            {
-                Microsoft.VisualBasic.FileIO.FileSystem.DeleteFile(
-                    path,
-                    Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs,
-                    Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
-            }
+            if (string.IsNullOrWhiteSpace(shortcutId))
+                return;
 
+            _shortcutIds.RemoveAll(id => string.Equals(id, shortcutId, StringComparison.OrdinalIgnoreCase));
             IconCache.TryRemove(path, out _);
             LoadDesktopItems();
+            UpdateActiveLayoutSnapshot();
+            SaveSettings();
         }
         catch (Exception exception)
         {
@@ -1063,6 +1261,136 @@ public partial class MainWindow : Window
             error.ShowDialog();
         }
     }
+
+    private static void DeletePathToRecycleBin(string path)
+    {
+        if (Directory.Exists(path))
+        {
+            Microsoft.VisualBasic.FileIO.FileSystem.DeleteDirectory(
+                path,
+                Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs,
+                Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
+        }
+        else if (File.Exists(path))
+        {
+            Microsoft.VisualBasic.FileIO.FileSystem.DeleteFile(
+                path,
+                Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs,
+                Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
+        }
+    }
+
+    private List<string> GetRelatedDuplicateItemPaths(string path)
+    {
+        var result = new List<string>();
+        if (File.Exists(path) || Directory.Exists(path))
+            result.Add(path);
+
+        try
+        {
+            if (!Directory.Exists(_sourceFolder))
+                return result;
+
+            var itemName = Path.GetFileNameWithoutExtension(path);
+            var extension = Path.GetExtension(path);
+            var normalizedName = RemoveWindowsCopySuffix(itemName);
+            foreach (var candidate in Directory.EnumerateFileSystemEntries(_sourceFolder))
+            {
+                if (result.Any(existing => string.Equals(existing, candidate, StringComparison.OrdinalIgnoreCase)))
+                    continue;
+
+                if (!string.Equals(Path.GetExtension(candidate), extension, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                if (string.Equals(
+                        RemoveWindowsCopySuffix(Path.GetFileNameWithoutExtension(candidate)),
+                        normalizedName,
+                        StringComparison.CurrentCultureIgnoreCase))
+                {
+                    result.Add(candidate);
+                }
+            }
+        }
+        catch
+        {
+        }
+
+        return result;
+    }
+
+    private static string RemoveWindowsCopySuffix(string name)
+    {
+        var match = System.Text.RegularExpressions.Regex.Match(name, @"^(?<name>.+) \(\d+\)$");
+        return match.Success ? match.Groups["name"].Value : name;
+    }
+
+    private string ResolveCurrentPanelItemPath(string itemPath)
+    {
+        if (File.Exists(itemPath) || Directory.Exists(itemPath))
+        {
+            var itemParent = Path.GetDirectoryName(
+                itemPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+            if (string.Equals(
+                    NormalizeDirectoryPath(itemParent),
+                    NormalizeDirectoryPath(_sourceFolder),
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return itemPath;
+            }
+        }
+
+        var fileName = Path.GetFileName(
+            itemPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        if (string.IsNullOrWhiteSpace(fileName))
+            return itemPath;
+
+        var currentPath = Path.Combine(_sourceFolder, fileName);
+        if (File.Exists(currentPath) || Directory.Exists(currentPath))
+            return currentPath;
+
+        try
+        {
+            var baseName = Path.GetFileNameWithoutExtension(fileName);
+            var extension = Path.GetExtension(fileName);
+            if (!string.IsNullOrWhiteSpace(baseName) && Directory.Exists(_sourceFolder))
+            {
+                var match = Directory.EnumerateFileSystemEntries(_sourceFolder)
+                    .FirstOrDefault(path =>
+                        string.Equals(Path.GetFileName(path), fileName, StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(Path.GetFileNameWithoutExtension(path), baseName, StringComparison.OrdinalIgnoreCase) &&
+                        string.Equals(Path.GetExtension(path), extension, StringComparison.OrdinalIgnoreCase));
+                if (!string.IsNullOrWhiteSpace(match))
+                    return match;
+            }
+        }
+        catch
+        {
+        }
+
+        return currentPath;
+    }
+
+    private static string NormalizeDirectoryPath(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            return string.Empty;
+
+        try
+        {
+            return Path.GetFullPath(path)
+                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        }
+        catch
+        {
+            return path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        }
+    }
+
+    private static bool IsShortcutLibraryFolder(string? path) =>
+        string.Equals(
+            NormalizeDirectoryPath(path),
+            NormalizeDirectoryPath(ShortcutLibraryService.ShortcutsDirectory),
+            StringComparison.OrdinalIgnoreCase);
 
     private void Panel_DragEnter(object sender, DragEventArgs e) => UpdatePanelDropEffect(e);
 
@@ -1087,10 +1415,7 @@ public partial class MainWindow : Window
         e.Handled = true;
         e.Effects = DragDropEffects.None;
 
-        _sourceFolder = PanelStorageService.EnsurePanelFolder(
-            _sourceFolder,
-            _newPanelIndex,
-            TitleText.Text);
+        _sourceFolder = ShortcutLibraryService.ShortcutsDirectory;
 
         if (!e.Data.GetDataPresent(DataFormats.FileDrop) ||
             e.Data.GetData(DataFormats.FileDrop) is not string[] droppedPaths)
@@ -1115,7 +1440,8 @@ public partial class MainWindow : Window
         var confirmation = new ConfirmationWindow(
             $"Dodać do panelu „{panelName}”?",
             $"Czy dodać skrót do {itemDescription} w panelu „{panelName}”?\n\nOryginalne pliki zostaną na swoim miejscu, a aplikacja zapisze tylko skrót w swoich danych.",
-            "Dodaj")
+            "Dodaj",
+            positiveConfirm: true)
         {
             Owner = this
         };
@@ -1131,8 +1457,19 @@ public partial class MainWindow : Window
             return;
 
         e.Effects = DragDropEffects.Link;
-        var failures = await Task.Run(() => PanelStorageService.AddShortcuts(paths, _sourceFolder));
+        var result = await Task.Run(() =>
+        {
+            var ids = ShortcutLibraryService.AddShortcuts(paths, out var addFailures);
+            return (Ids: ids, Failures: addFailures);
+        });
+        foreach (var shortcutId in result.Ids)
+        {
+            if (!_shortcutIds.Contains(shortcutId, StringComparer.OrdinalIgnoreCase))
+                _shortcutIds.Add(shortcutId);
+        }
+        var failures = result.Failures;
         LoadDesktopItems();
+        UpdateActiveLayoutSnapshot();
         SaveSettings();
 
         if (failures.Count == 0)
@@ -1150,10 +1487,7 @@ public partial class MainWindow : Window
 
     private void AddShortcutViaDialog()
     {
-        _sourceFolder = PanelStorageService.EnsurePanelFolder(
-            _sourceFolder,
-            _newPanelIndex,
-            TitleText.Text);
+        _sourceFolder = ShortcutLibraryService.ShortcutsDirectory;
 
         var dialog = new OpenFileDialog
         {
@@ -1165,8 +1499,14 @@ public partial class MainWindow : Window
         if (dialog.ShowDialog(this) != true || dialog.FileNames.Length == 0)
             return;
 
-        var failures = PanelStorageService.AddShortcuts(dialog.FileNames, _sourceFolder);
+        var ids = ShortcutLibraryService.AddShortcuts(dialog.FileNames, out var failures);
+        foreach (var shortcutId in ids)
+        {
+            if (!_shortcutIds.Contains(shortcutId, StringComparer.OrdinalIgnoreCase))
+                _shortcutIds.Add(shortcutId);
+        }
         LoadDesktopItems();
+        UpdateActiveLayoutSnapshot();
         SaveSettings();
 
         if (failures.Count == 0)
@@ -1440,12 +1780,7 @@ public partial class MainWindow : Window
             Height = preview.Height;
             ApplyBackground(preview.BackgroundColor, preview.BackgroundOpacity);
 
-            if (Directory.Exists(preview.SourceFolder) &&
-                !string.Equals(_sourceFolder, preview.SourceFolder, StringComparison.OrdinalIgnoreCase))
-            {
-                _sourceFolder = preview.SourceFolder;
-                LoadDesktopItems();
-            }
+            _sourceFolder = ShortcutLibraryService.ShortcutsDirectory;
         };
 
         if (settingsWindow.ShowDialog() != true)
@@ -1520,7 +1855,7 @@ public partial class MainWindow : Window
             settingsWindow.FenceIconLetterSpacing);
         Width = settingsWindow.FenceWidth;
         Height = settingsWindow.FenceHeight;
-        _sourceFolder = settingsWindow.SourceFolder;
+        _sourceFolder = ShortcutLibraryService.ShortcutsDirectory;
         _hideFolders = settingsWindow.HideFolders;
         ApplyBackground(settingsWindow.BackgroundColor, settingsWindow.BackgroundOpacity);
         LoadDesktopItems();
@@ -1581,12 +1916,7 @@ public partial class MainWindow : Window
             Height = preview.Height;
             ApplyBackground(preview.BackgroundColor, preview.BackgroundOpacity);
 
-            if (Directory.Exists(preview.SourceFolder) &&
-                !string.Equals(_sourceFolder, preview.SourceFolder, StringComparison.OrdinalIgnoreCase))
-            {
-                _sourceFolder = preview.SourceFolder;
-                LoadDesktopItems();
-            }
+            _sourceFolder = ShortcutLibraryService.ShortcutsDirectory;
         };
 
         settingsWindow.Closed += (_, _) =>
@@ -1621,7 +1951,7 @@ public partial class MainWindow : Window
                 settingsWindow.FenceIconLetterSpacing);
             Width = settingsWindow.FenceWidth;
             Height = settingsWindow.FenceHeight;
-            _sourceFolder = settingsWindow.SourceFolder;
+            _sourceFolder = ShortcutLibraryService.ShortcutsDirectory;
             _hideFolders = settingsWindow.HideFolders;
             ApplyBackground(settingsWindow.BackgroundColor, settingsWindow.BackgroundOpacity);
             LoadDesktopItems();
@@ -1788,10 +2118,8 @@ public partial class MainWindow : Window
             HeaderIcon.Kind = settings.Icon;
             Width = Math.Max(MinWidth, settings.Width);
             Height = Math.Max(MinHeight, settings.Height);
-            _sourceFolder = PanelStorageService.EnsurePanelFolder(
-                settings.SourceFolder,
-                _newPanelIndex,
-                settings.Title);
+            _sourceFolder = settings.SourceFolder;
+            _shortcutIds = GetShortcutIdsFromSettings(settings);
             _hideFolders = settings.HideFolders ?? false;
             _useDoubleClickToOpen = settings.UseDoubleClickToOpen ?? false;
             _isHeaderHidden = settings.HideHeader;
@@ -1837,11 +2165,78 @@ public partial class MainWindow : Window
                 settings.IconFontBold ?? settings.FontBold ?? false,
                 settings.IconLetterSpacing ?? 0);
             _savedAdditionalPanels = settings.AdditionalPanels ?? [];
+            LoadSavedLayouts(settings);
         }
         catch
         {
             // Invalid local settings should never prevent the widget from starting.
         }
+    }
+
+    private void LoadSavedLayouts(SavedFenceSettings settings)
+    {
+        try
+        {
+            if (File.Exists(LayoutsFilePath))
+            {
+                var layoutsJson = File.ReadAllText(LayoutsFilePath);
+                var layoutsDocument = JsonSerializer.Deserialize<SavedLayoutsDocument>(layoutsJson, JsonOptions);
+                _savedLayouts = layoutsDocument?.Layouts ?? [];
+                _activeLayoutId = layoutsDocument?.ActiveLayoutId;
+                _visibleLayoutId = _activeLayoutId;
+                NormalizeSavedLayouts();
+                return;
+            }
+        }
+        catch
+        {
+            // Broken layout storage should fall back to the legacy settings file.
+        }
+
+        _savedLayouts = settings.Layouts ?? [];
+        _activeLayoutId = settings.ActiveLayoutId;
+        _visibleLayoutId = _activeLayoutId;
+        NormalizeSavedLayouts();
+    }
+
+    private void NormalizeSavedLayouts()
+    {
+        _savedLayouts = _savedLayouts
+            .Select(layout => layout with
+            {
+                MainPanel = NormalizeSavedPanelShortcuts(layout.MainPanel),
+                AdditionalPanels = layout.AdditionalPanels
+                    .Select(NormalizeSavedPanelShortcuts)
+                    .ToList()
+            })
+            .ToList();
+    }
+
+    private static SavedPanelSettings NormalizeSavedPanelShortcuts(SavedPanelSettings settings) =>
+        settings with
+        {
+            SourceFolder = ShortcutLibraryService.ShortcutsDirectory,
+            ShortcutIds = GetShortcutIdsFromSettings(settings)
+        };
+
+    private static List<string> GetShortcutIdsFromSettings(SavedPanelSettings settings)
+    {
+        if (settings.ShortcutIds is not null)
+            return settings.ShortcutIds.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+
+        return IsShortcutLibraryFolder(settings.SourceFolder)
+            ? []
+            : ShortcutLibraryService.ImportFolder(settings.SourceFolder);
+    }
+
+    private static List<string> GetShortcutIdsFromSettings(SavedFenceSettings settings)
+    {
+        if (settings.ShortcutIds is not null)
+            return settings.ShortcutIds.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+
+        return IsShortcutLibraryFolder(settings.SourceFolder)
+            ? []
+            : ShortcutLibraryService.ImportFolder(settings.SourceFolder);
     }
 
     private void SaveSettings()
@@ -1854,28 +2249,24 @@ public partial class MainWindow : Window
 
         try
         {
-            _sourceFolder = PanelStorageService.EnsurePanelFolder(
-                _sourceFolder,
-                _newPanelIndex,
-                TitleText.Text);
+            _sourceFolder = ShortcutLibraryService.ShortcutsDirectory;
+            Directory.CreateDirectory(_sourceFolder);
             foreach (var panel in _additionalPanels.Where(panel => panel.IsLoaded && !panel._isPendingCreation))
-            {
-                panel._sourceFolder = PanelStorageService.EnsurePanelFolder(
-                    panel._sourceFolder,
-                    panel._newPanelIndex,
-                    panel.TitleText.Text);
-            }
+                panel._sourceFolder = ShortcutLibraryService.ShortcutsDirectory;
 
             var directory = Path.GetDirectoryName(SettingsFilePath);
             if (directory is not null)
                 Directory.CreateDirectory(directory);
+
+            UpdateActiveLayoutSnapshot();
 
             var settings = new SavedFenceSettings(
                 TitleText.Text,
                 HeaderIcon.Kind,
                 Width,
                 Height,
-                _sourceFolder,
+                ShortcutLibraryService.ShortcutsDirectory,
+                null,
                 $"#{_backgroundColor.R:X2}{_backgroundColor.G:X2}{_backgroundColor.B:X2}",
                 _backgroundOpacity,
                 _isHeaderHidden,
@@ -1893,10 +2284,7 @@ public partial class MainWindow : Window
                     : $"#{_creatorWindow.BackgroundColor.R:X2}{_creatorWindow.BackgroundColor.G:X2}{_creatorWindow.BackgroundColor.B:X2}",
                 _creatorWindow?.BackgroundOpacity ?? _creatorBackgroundOpacity,
                 _showMainPanel,
-                _additionalPanels
-                    .Where(panel => panel.IsLoaded && !panel._isPendingCreation)
-                    .Select(panel => panel.CapturePanelSettings())
-                    .ToList(),
+                null,
                 _fontFamilyName,
                 _borderRadius,
                 _borderThickness,
@@ -1912,7 +2300,10 @@ public partial class MainWindow : Window
                 _iconFontBold,
                 _iconLetterSpacing,
                 _hideFolders,
-                _useDoubleClickToOpen);
+                _useDoubleClickToOpen,
+                LocalizationService.CurrentLanguage,
+                null,
+                null);
 
             if (File.Exists(SettingsFilePath))
             {
@@ -1920,9 +2311,18 @@ public partial class MainWindow : Window
                 File.Copy(SettingsFilePath, backupPath, overwrite: true);
             }
 
+            var layoutsToSave = _savedLayouts
+                .Select(CloneLayoutForStorage)
+                .ToList();
+            _savedLayouts = layoutsToSave;
+            _activeLayoutId = _visibleLayoutId ?? _activeLayoutId;
+
             File.WriteAllText(
                 SettingsFilePath,
                 JsonSerializer.Serialize(settings, JsonOptions));
+            File.WriteAllText(
+                LayoutsFilePath,
+                JsonSerializer.Serialize(new SavedLayoutsDocument(_visibleLayoutId ?? _activeLayoutId, layoutsToSave), JsonOptions));
         }
         catch
         {
@@ -1930,12 +2330,41 @@ public partial class MainWindow : Window
         }
 
         if (_panelsWindow?.IsVisible == true)
+        {
             _panelsWindow.UpdatePanels(CreatePanelOverviewList());
+            _panelsWindow.UpdateLayouts(CreateLayoutOverviewList(), _activeLayoutId);
+        }
+    }
+
+    private static void CleanupLegacyPanelFolders()
+    {
+        try
+        {
+            var root = Path.GetFullPath(ShortcutLibraryService.AppDataDirectory)
+                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            var panels = Path.GetFullPath(PanelStorageService.RootDirectory)
+                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            var expected = Path.Combine(root, "Panels");
+
+            if (!string.Equals(panels, expected, StringComparison.OrdinalIgnoreCase) ||
+                !Directory.Exists(panels))
+            {
+                return;
+            }
+
+            Directory.Delete(panels, recursive: true);
+        }
+        catch
+        {
+            // Old per-panel folders are only migration leftovers. If Windows locks
+            // any file, leave them for the next startup instead of blocking launch.
+        }
     }
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
         Converters = { new JsonStringEnumConverter() }
     };
 
@@ -1945,6 +2374,7 @@ public partial class MainWindow : Window
         double Width,
         double Height,
         string SourceFolder,
+        List<string>? ShortcutIds,
         string BackgroundHex,
         double BackgroundOpacity,
         bool HideHeader,
@@ -1976,7 +2406,22 @@ public partial class MainWindow : Window
         bool? IconFontBold,
         double? IconLetterSpacing,
         bool? HideFolders,
-        bool? UseDoubleClickToOpen);
+        bool? UseDoubleClickToOpen,
+        string? Language,
+        string? ActiveLayoutId,
+        List<SavedLayoutSettings>? Layouts);
+
+    private sealed record SavedLayoutSettings(
+        string Id,
+        string Name,
+        DateTime CreatedAt,
+        bool ShowMainPanel,
+        SavedPanelSettings MainPanel,
+        List<SavedPanelSettings> AdditionalPanels);
+
+    private sealed record SavedLayoutsDocument(
+        string? ActiveLayoutId,
+        List<SavedLayoutSettings>? Layouts);
 
     private sealed record SavedPanelSettings(
         string Title,
@@ -1984,6 +2429,7 @@ public partial class MainWindow : Window
         double Width,
         double Height,
         string SourceFolder,
+        List<string>? ShortcutIds,
         string BackgroundHex,
         double BackgroundOpacity,
         bool HideHeader,
@@ -2013,6 +2459,7 @@ public partial class MainWindow : Window
         Width,
         Height,
         _sourceFolder,
+        _shortcutIds.ToList(),
         $"#{_backgroundColor.R:X2}{_backgroundColor.G:X2}{_backgroundColor.B:X2}",
         _backgroundOpacity,
         _isHeaderHidden,
@@ -2042,13 +2489,14 @@ public partial class MainWindow : Window
         HeaderIcon.Kind = settings.Icon;
         Width = Math.Max(MinWidth, settings.Width);
         Height = Math.Max(MinHeight, settings.Height);
-        _sourceFolder = PanelStorageService.EnsurePanelFolder(
-            settings.SourceFolder,
-            _newPanelIndex,
-            settings.Title);
+        _sourceFolder = settings.SourceFolder;
+        _shortcutIds = GetShortcutIdsFromSettings(settings);
         _hideFolders = settings.HideFolders ?? false;
         _savedLeft = settings.Left;
         _savedTop = settings.Top;
+        var workArea = SystemParameters.WorkArea;
+        Left = Math.Clamp(settings.Left, workArea.Left, Math.Max(workArea.Left, workArea.Right - Width));
+        Top = Math.Clamp(settings.Top, workArea.Top, Math.Max(workArea.Top, workArea.Bottom - Height));
         ApplyIconSize(settings.IconSize > 0 ? settings.IconSize : 42);
         ApplyPanelFont(settings.FontFamilyName);
         ApplyHeaderPresentation(settings.HideHeader);
@@ -2088,6 +2536,8 @@ public partial class MainWindow : Window
         {
             ApplyBackground(Color.FromRgb(0x0B, 0x0E, 0x12), 0.58);
         }
+
+        LoadDesktopItems();
     }
 
     private MainWindow CreateAdditionalPanel(
@@ -2107,6 +2557,9 @@ public partial class MainWindow : Window
                 return;
 
             _additionalPanels.Remove(panel);
+            if (_isApplyingLayout)
+                return;
+
             SaveSettings();
         };
         panel.Show();
@@ -2123,6 +2576,293 @@ public partial class MainWindow : Window
             CreateAdditionalPanel(settings);
 
         _savedAdditionalPanels = [];
+    }
+
+    private void EnsureLayoutDefaults()
+    {
+        if (_savedLayouts.Count == 0)
+        {
+            var layout = CaptureCurrentLayout(LocalizationService.T("Domyślny"));
+            _savedLayouts.Add(layout);
+            _activeLayoutId = layout.Id;
+            _visibleLayoutId = layout.Id;
+            SaveSettings();
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_activeLayoutId) ||
+            _savedLayouts.All(layout => layout.Id != _activeLayoutId))
+        {
+            _activeLayoutId = _savedLayouts[0].Id;
+            _visibleLayoutId = _activeLayoutId;
+            SaveSettings();
+        }
+    }
+
+    private SavedLayoutSettings CaptureCurrentLayout(string name) => new(
+        Guid.NewGuid().ToString("N"),
+        name,
+        DateTime.Now,
+        IsVisible,
+        CapturePanelSettings(),
+        _additionalPanels
+            .Where(panel => panel.IsLoaded && !panel._isPendingCreation)
+            .Select(panel => panel.CapturePanelSettings())
+            .ToList());
+
+    private SavedLayoutSettings CaptureCurrentLayoutWithIdentity(SavedLayoutSettings existing) => new(
+        existing.Id,
+        existing.Name,
+        existing.CreatedAt,
+        IsVisible,
+        CapturePanelSettings(),
+        _additionalPanels
+            .Where(panel => panel.IsLoaded && !panel._isPendingCreation)
+            .Select(panel => panel.CapturePanelSettings())
+            .ToList());
+
+    private SavedLayoutSettings CloneLayoutFolders(SavedLayoutSettings source, string name)
+    {
+        var layoutId = Guid.NewGuid().ToString("N");
+        return new SavedLayoutSettings(
+            layoutId,
+            name,
+            DateTime.Now,
+            source.ShowMainPanel,
+            ClonePanelShortcutList(source.MainPanel),
+            source.AdditionalPanels
+                .Select(ClonePanelShortcutList)
+                .ToList());
+    }
+
+    private static SavedPanelSettings ClonePanelShortcutList(SavedPanelSettings settings) =>
+        settings with
+        {
+            SourceFolder = ShortcutLibraryService.ShortcutsDirectory,
+            ShortcutIds = settings.ShortcutIds?.ToList()
+        };
+
+    private SavedLayoutSettings CreateEmptyLayoutFromCurrent(string name)
+    {
+        var layout = CaptureCurrentLayout(name);
+        return layout with
+        {
+            MainPanel = ClearPanelShortcuts(layout.MainPanel),
+            AdditionalPanels = layout.AdditionalPanels
+                .Select(ClearPanelShortcuts)
+                .ToList()
+        };
+    }
+
+    private static SavedPanelSettings ClearPanelShortcuts(SavedPanelSettings settings) =>
+        settings with
+        {
+            SourceFolder = ShortcutLibraryService.ShortcutsDirectory,
+            ShortcutIds = []
+        };
+
+    private static SavedLayoutSettings CloneLayoutForStorage(SavedLayoutSettings layout) =>
+        layout with
+        {
+            MainPanel = ClonePanelForStorage(layout.MainPanel),
+            AdditionalPanels = layout.AdditionalPanels
+                .Select(ClonePanelForStorage)
+                .ToList()
+        };
+
+    private static SavedPanelSettings ClonePanelForStorage(SavedPanelSettings panel) =>
+        panel with
+        {
+            SourceFolder = ShortcutLibraryService.ShortcutsDirectory,
+            ShortcutIds = panel.ShortcutIds?
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList() ?? []
+        };
+
+    private void UpdateActiveLayoutSnapshot()
+    {
+        var layoutId = _visibleLayoutId ?? _activeLayoutId;
+        if (_isApplyingLayout || string.IsNullOrWhiteSpace(layoutId))
+            return;
+
+        var index = _savedLayouts.FindIndex(layout => layout.Id == layoutId);
+        if (index < 0)
+            return;
+
+        _savedLayouts[index] = CaptureCurrentLayoutWithIdentity(_savedLayouts[index]);
+    }
+
+    private void SaveCurrentLayoutSnapshot(string? overwriteLayoutId, string? newLayoutName)
+    {
+        if (!string.IsNullOrWhiteSpace(newLayoutName))
+        {
+            var layout = CaptureCurrentLayout(newLayoutName.Trim());
+            _savedLayouts.Add(layout);
+            _activeLayoutId = layout.Id;
+        }
+        else if (!string.IsNullOrWhiteSpace(overwriteLayoutId))
+        {
+            var index = _savedLayouts.FindIndex(layout => layout.Id == overwriteLayoutId);
+            if (index < 0)
+                return;
+
+            var existing = _savedLayouts[index];
+            _savedLayouts[index] = new SavedLayoutSettings(
+                existing.Id,
+                existing.Name,
+                existing.CreatedAt,
+                IsVisible,
+                CapturePanelSettings(),
+                _additionalPanels
+                    .Where(panel => panel.IsLoaded && !panel._isPendingCreation)
+                    .Select(panel => panel.CapturePanelSettings())
+                    .ToList());
+            _activeLayoutId = existing.Id;
+        }
+        else
+        {
+            return;
+        }
+
+        SaveSettings();
+        _panelsWindow?.UpdateLayouts(CreateLayoutOverviewList(), _activeLayoutId);
+    }
+
+    private void ApplySavedLayout(string layoutId)
+    {
+        if (!string.Equals(_activeLayoutId, layoutId, StringComparison.Ordinal))
+            UpdateActiveLayoutSnapshot();
+
+        var layout = _savedLayouts.FirstOrDefault(item => item.Id == layoutId);
+        if (layout is null)
+            return;
+
+        _isApplyingLayout = true;
+        try
+        {
+            foreach (var panel in _additionalPanels.ToList())
+                panel.Close();
+            _additionalPanels.Clear();
+
+            ApplySavedPanelSettings(layout.MainPanel);
+            _showMainPanel = layout.ShowMainPanel;
+            if (_showMainPanel)
+            {
+                Show();
+                SendToDesktopLevel();
+            }
+            else
+            {
+                Hide();
+            }
+
+            foreach (var panelSettings in layout.AdditionalPanels)
+                CreateAdditionalPanel(panelSettings);
+
+            _activeLayoutId = layout.Id;
+            _visibleLayoutId = layout.Id;
+            SaveSettings();
+        }
+        finally
+        {
+            _isApplyingLayout = false;
+        }
+
+        _panelsWindow?.UpdatePanels(CreatePanelOverviewList());
+        _panelsWindow?.UpdateLayouts(CreateLayoutOverviewList(), _activeLayoutId);
+    }
+
+    private void RenameSavedLayout(string layoutId, string name)
+    {
+        var index = _savedLayouts.FindIndex(layout => layout.Id == layoutId);
+        if (index < 0 || string.IsNullOrWhiteSpace(name))
+            return;
+
+        var existing = _savedLayouts[index];
+        _savedLayouts[index] = new SavedLayoutSettings(
+            existing.Id,
+            name.Trim(),
+            existing.CreatedAt,
+            existing.ShowMainPanel,
+            existing.MainPanel,
+            existing.AdditionalPanels);
+
+        SaveSettings();
+        _panelsWindow?.UpdateLayouts(CreateLayoutOverviewList(), _activeLayoutId);
+    }
+
+    private void DuplicateSavedLayout(string layoutId)
+    {
+        var source = _savedLayouts.FirstOrDefault(layout => layout.Id == layoutId);
+        if (source is null)
+            return;
+
+        var duplicate = CloneLayoutFolders(
+            source,
+            GetUniqueLayoutName($"{source.Name} {LocalizationService.T("kopia")}"));
+
+        _savedLayouts.Add(duplicate);
+        SaveSettings();
+        _panelsWindow?.UpdateLayouts(CreateLayoutOverviewList(), _activeLayoutId);
+    }
+
+    private void AddNewLayoutFromCurrent()
+    {
+        UpdateActiveLayoutSnapshot();
+        var emptyLayout = CreateEmptyLayoutFromCurrent(
+            GetUniqueLayoutName(LocalizationService.T("Nowy układ")));
+        _savedLayouts.Add(emptyLayout);
+        _activeLayoutId = emptyLayout.Id;
+        ApplySavedLayout(emptyLayout.Id);
+        SaveSettings();
+        _panelsWindow?.UpdateLayouts(CreateLayoutOverviewList(), _activeLayoutId);
+        if (DateTime.MinValue > DateTime.MaxValue)
+        {
+
+        var layout = CloneLayoutFolders(
+            CaptureCurrentLayout(LocalizationService.T("Nowy układ")),
+            GetUniqueLayoutName(LocalizationService.T("Nowy układ")));
+        _savedLayouts.Add(layout);
+        _activeLayoutId = layout.Id;
+        SaveSettings();
+        _panelsWindow?.UpdateLayouts(CreateLayoutOverviewList(), _activeLayoutId);
+        }
+    }
+
+    private string GetUniqueLayoutName(string baseName)
+    {
+        if (_savedLayouts.All(layout => !string.Equals(layout.Name, baseName, StringComparison.OrdinalIgnoreCase)))
+            return baseName;
+
+        for (var index = 2; ; index++)
+        {
+            var candidate = $"{baseName} {index}";
+            if (_savedLayouts.All(layout => !string.Equals(layout.Name, candidate, StringComparison.OrdinalIgnoreCase)))
+                return candidate;
+        }
+    }
+
+    private void DeleteSavedLayout(string layoutId)
+    {
+        if (_savedLayouts.Count <= 1)
+            return;
+
+        var index = _savedLayouts.FindIndex(layout => layout.Id == layoutId);
+        if (index < 0)
+            return;
+
+        var wasActive = string.Equals(_activeLayoutId, layoutId, StringComparison.Ordinal);
+        _savedLayouts.RemoveAt(index);
+
+        if (wasActive)
+        {
+            _activeLayoutId = _savedLayouts[0].Id;
+            ApplySavedLayout(_activeLayoutId);
+            return;
+        }
+
+        SaveSettings();
+        _panelsWindow?.UpdateLayouts(CreateLayoutOverviewList(), _activeLayoutId);
     }
 
     private void UpdateCreatorPanelVisibility()
@@ -2168,15 +2908,41 @@ public partial class MainWindow : Window
         {
             _panelsWindow = new PanelsWindow(
                 panels,
+                CreateLayoutOverviewList(),
+                _activeLayoutId,
                 _useDoubleClickToOpen,
                 _isHeaderHidden,
                 _backgroundColor,
                 _backgroundOpacity,
+                _borderRadius,
+                _borderThickness,
+                _borderColor,
+                _borderOpacity,
+                _fontFamilyName,
+                _fontColor,
+                _fontOpacity,
+                _fontBold,
+                _letterSpacing,
+                _iconFontFamilyName,
+                _iconFontColor,
+                _iconFontOpacity,
+                _iconFontBold,
+                _iconLetterSpacing,
+                _iconSize,
                 ExportConfigurationAsync,
                 ImportConfigurationAsync);
             _panelsWindow.PanelVisibilityChanged += PanelsWindow_PanelVisibilityChanged;
             _panelsWindow.EditPanelRequested += PanelsWindow_EditPanelRequested;
             _panelsWindow.NewPanelRequested += (_, _) => CreateNewPanelFromTray();
+            _panelsWindow.ApplyLayoutRequested += (_, args) => ApplySavedLayout(args.LayoutId);
+            _panelsWindow.RenameLayoutRequested += (_, args) =>
+                RenameSavedLayout(args.LayoutId, args.Name);
+            _panelsWindow.DeleteLayoutRequested += (_, args) =>
+                DeleteSavedLayout(args.LayoutId);
+            _panelsWindow.DuplicateLayoutRequested += (_, args) =>
+                DuplicateSavedLayout(args.LayoutId);
+            _panelsWindow.AddLayoutRequested += (_, _) =>
+                AddNewLayoutFromCurrent();
             _panelsWindow.GlobalAppearanceChanged += PanelsWindow_GlobalAppearanceChanged;
             _panelsWindow.RefreshIconsRequested += (_, _) => RefreshAllPanelIcons();
             _panelsWindow.ActivationModeChanged += (_, args) =>
@@ -2186,6 +2952,7 @@ public partial class MainWindow : Window
         else
         {
             _panelsWindow.UpdatePanels(panels);
+            _panelsWindow.UpdateLayouts(CreateLayoutOverviewList(), _activeLayoutId);
         }
 
         if (!_panelsWindow.IsVisible)
@@ -2269,6 +3036,19 @@ public partial class MainWindow : Window
         return panels;
     }
 
+    private List<LayoutOverviewItem> CreateLayoutOverviewList() =>
+        _savedLayouts
+            .Select(layout =>
+            {
+                var suffix = layout.Id == _activeLayoutId ? " • aktywny" : string.Empty;
+                _ = suffix;
+                return new LayoutOverviewItem(
+                    layout.Id,
+                    layout.Name,
+                    layout.Id == _activeLayoutId);
+            })
+            .ToList();
+
     private void PanelsWindow_PanelVisibilityChanged(object? sender, PanelVisibilityChangedEventArgs e)
     {
         if (!int.TryParse(e.PanelKey, out var panelIndex))
@@ -2350,7 +3130,7 @@ public partial class MainWindow : Window
             _globalPreviewOriginalPanelAppearances = GetAllPanels()
                 .ToDictionary(
                     panel => panel,
-                    panel => (panel._isHeaderHidden, panel._backgroundColor, panel._backgroundOpacity));
+                    panel => panel.CreateGlobalAppearanceSnapshot());
             if (_creatorWindow is not null)
             {
                 _globalPreviewOriginalCreatorAppearance = (
@@ -2371,11 +3151,14 @@ public partial class MainWindow : Window
             if (!_globalPreviewOriginalPanelAppearances!.TryGetValue(panel, out var original))
                 continue;
 
-            panel.ApplyHeaderPresentation(
-                e.ApplyHeaderToAll ? e.HideHeader : original.HideHeader);
-            panel.ApplyBackground(
-                e.ApplyColorToAll ? e.BackgroundColor : original.BackgroundColor,
-                e.ApplyColorToAll ? e.BackgroundOpacity : original.BackgroundOpacity);
+            panel.ApplyHeaderPresentation(e.HideHeader);
+            panel.ApplyBackground(e.BackgroundColor, e.BackgroundOpacity);
+            panel.ApplyBorderAppearance(e.BorderRadius, e.BorderThickness, e.BorderColor, e.BorderOpacity);
+            panel.ApplyPanelFont(e.FontFamilyName);
+            panel.ApplyTextAppearance(e.FontColor, e.FontOpacity, e.FontBold, e.LetterSpacing);
+            panel.ApplyIconFont(e.IconFontFamilyName);
+            panel.ApplyIconTextAppearance(e.IconFontColor, e.IconFontOpacity, e.IconFontBold, e.IconLetterSpacing);
+            panel.ApplyIconSize(e.IconSize);
         }
 
         ApplyCreatorGlobalAppearance(e);
@@ -2400,8 +3183,7 @@ public partial class MainWindow : Window
         {
             foreach (var (panel, original) in _globalPreviewOriginalPanelAppearances)
             {
-                panel.ApplyHeaderPresentation(original.HideHeader);
-                panel.ApplyBackground(original.BackgroundColor, original.BackgroundOpacity);
+                panel.ApplyGlobalAppearanceSnapshot(original);
             }
         }
 
@@ -2427,15 +3209,48 @@ public partial class MainWindow : Window
             yield return panel;
     }
 
+    private GlobalPanelAppearanceSnapshot CreateGlobalAppearanceSnapshot() =>
+        new(
+            _isHeaderHidden,
+            _backgroundColor,
+            _backgroundOpacity,
+            _borderRadius,
+            _borderThickness,
+            _borderColor,
+            _borderOpacity,
+            _fontFamilyName,
+            _fontColor,
+            _fontOpacity,
+            _fontBold,
+            _letterSpacing,
+            _iconFontFamilyName,
+            _iconFontColor,
+            _iconFontOpacity,
+            _iconFontBold,
+            _iconLetterSpacing,
+            _iconSize);
+
+    private void ApplyGlobalAppearanceSnapshot(GlobalPanelAppearanceSnapshot snapshot)
+    {
+        ApplyHeaderPresentation(snapshot.HideHeader);
+        ApplyBackground(snapshot.BackgroundColor, snapshot.BackgroundOpacity);
+        ApplyBorderAppearance(snapshot.BorderRadius, snapshot.BorderThickness, snapshot.BorderColor, snapshot.BorderOpacity);
+        ApplyPanelFont(snapshot.FontFamilyName);
+        ApplyTextAppearance(snapshot.FontColor, snapshot.FontOpacity, snapshot.FontBold, snapshot.LetterSpacing);
+        ApplyIconFont(snapshot.IconFontFamilyName);
+        ApplyIconTextAppearance(snapshot.IconFontColor, snapshot.IconFontOpacity, snapshot.IconFontBold, snapshot.IconLetterSpacing);
+        ApplyIconSize(snapshot.IconSize);
+    }
+
     private void ApplyCreatorGlobalAppearance(GlobalAppearanceEventArgs e)
     {
         if (_creatorWindow is null || _globalPreviewOriginalCreatorAppearance is not { } original)
             return;
 
         _creatorWindow.ApplyGlobalAppearance(
-            e.ApplyHeaderToAll ? e.HideHeader : original.HideHeader,
-            e.ApplyColorToAll ? e.BackgroundColor : original.BackgroundColor,
-            e.ApplyColorToAll ? e.BackgroundOpacity : original.BackgroundOpacity);
+            e.HideHeader,
+            e.BackgroundColor,
+            e.BackgroundOpacity);
     }
 
     private void ResizeArea_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -2533,18 +3348,24 @@ public partial class MainWindow : Window
     {
         private ImageSource? _icon;
 
-        public DesktopItem(string name, string path, ImageSource? icon, string? hint = null)
+        public DesktopItem(string name, string path, ImageSource? icon, string? hint = null, string? shortcutId = null)
         {
             Name = name;
             Path = path;
             Hint = hint ?? string.Empty;
+            ShortcutId = shortcutId ?? string.Empty;
             _icon = icon;
         }
 
         public string Name { get; }
         public string Path { get; }
+        public string ShortcutId { get; }
         public string Hint { get; }
         public bool IsPlaceholder => string.Equals(Path, AddShortcutPlaceholderPath, StringComparison.Ordinal);
+        public bool IsSameItem(DesktopItem other) =>
+            string.Equals(ShortcutId, other.ShortcutId, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(Path, other.Path, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(Name, other.Name, StringComparison.Ordinal);
         public double TextOpacity => IsPlaceholder ? 0.47 : 1;
         public int LabelMaxLines => IsPlaceholder ? 4 : 2;
         public double LabelMaxHeight => IsPlaceholder ? 58 : double.PositiveInfinity;
@@ -2742,3 +3563,23 @@ public partial class MainWindow : Window
         IntPtr wParam,
         IntPtr lParam);
 }
+
+internal sealed record GlobalPanelAppearanceSnapshot(
+    bool HideHeader,
+    Color BackgroundColor,
+    double BackgroundOpacity,
+    double BorderRadius,
+    double BorderThickness,
+    Color BorderColor,
+    double BorderOpacity,
+    string FontFamilyName,
+    Color FontColor,
+    double FontOpacity,
+    bool FontBold,
+    double LetterSpacing,
+    string IconFontFamilyName,
+    Color IconFontColor,
+    double IconFontOpacity,
+    bool IconFontBold,
+    double IconLetterSpacing,
+    double IconSize);

@@ -6,7 +6,7 @@
     <TargetFramework>net10.0-windows</TargetFramework>
     <RootNamespace>My_Fancy_Fences</RootNamespace>
     <Description>A customizable, lightweight desktop organizer for Windows inspired by Stardock Fences.</Description>
-    <Version>2.0.0</Version>
+    <Version>2.1.0</Version>
     <RepositoryUrl>https://github.com/infitis-studio/my-fancy-fences</RepositoryUrl>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <Nullable>enable</Nullable>

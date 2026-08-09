@@ -40,6 +40,38 @@ public static class PanelStorageService
         return Path.Combine(RootDirectory, $"panel-{panelIndex:D3}-{safeTitle}");
     }
 
+    public static string ClonePanelFolder(
+        string sourceFolder,
+        string layoutId,
+        int panelIndex,
+        string? title)
+    {
+        var safeTitle = SanitizeFileName(string.IsNullOrWhiteSpace(title) ? "Panel" : title);
+        var layoutFolder = Path.Combine(RootDirectory, "layouts", $"layout-{layoutId}");
+        Directory.CreateDirectory(layoutFolder);
+
+        var destination = Path.Combine(layoutFolder, $"panel-{panelIndex:D3}-{safeTitle}");
+        if (Directory.Exists(sourceFolder) &&
+            string.Equals(
+                Path.GetFullPath(sourceFolder).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
+                Path.GetFullPath(destination).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return destination;
+        }
+
+        if (Directory.Exists(destination))
+            Directory.Delete(destination, recursive: true);
+        else if (File.Exists(destination))
+            File.Delete(destination);
+
+        Directory.CreateDirectory(destination);
+        if (Directory.Exists(sourceFolder))
+            CopyDirectory(sourceFolder, destination);
+
+        return destination;
+    }
+
     public static bool IsManagedPanelFolder(string path)
     {
         try
@@ -69,7 +101,12 @@ public static class PanelStorageService
             {
                 if (ShortcutExtensions.Contains(Path.GetExtension(sourcePath)))
                 {
-                    var destination = GetUniqueDestinationPath(panelFolder, Path.GetFileName(sourcePath));
+                    var requestedName = Path.GetFileName(sourcePath);
+                    var existingDestination = Path.Combine(panelFolder, requestedName);
+                    if (File.Exists(existingDestination))
+                        continue;
+
+                    var destination = GetUniqueDestinationPath(panelFolder, requestedName);
                     File.Copy(sourcePath, destination, overwrite: false);
                 }
                 else
@@ -113,6 +150,11 @@ public static class PanelStorageService
             name = "Shortcut";
 
         var shortcutPath = GetUniqueDestinationPath(panelFolder, $"{Path.GetFileNameWithoutExtension(name)}.lnk");
+        var preferredShortcutPath = Path.Combine(panelFolder, $"{Path.GetFileNameWithoutExtension(name)}.lnk");
+        if (File.Exists(preferredShortcutPath))
+            return;
+
+        shortcutPath = preferredShortcutPath;
         var shellType = Type.GetTypeFromProgID("WScript.Shell")
             ?? throw new InvalidOperationException("WScript.Shell is not available.");
         dynamic shell = Activator.CreateInstance(shellType)
@@ -144,6 +186,18 @@ public static class PanelStorageService
             destination = Path.Combine(folder, $"{baseName} ({suffix}){extension}");
 
         return destination;
+    }
+
+    private static void CopyDirectory(string sourceDirectory, string destinationDirectory)
+    {
+        Directory.CreateDirectory(destinationDirectory);
+        foreach (var filePath in Directory.EnumerateFiles(sourceDirectory))
+            File.Copy(filePath, Path.Combine(destinationDirectory, Path.GetFileName(filePath)), overwrite: false);
+
+        foreach (var directoryPath in Directory.EnumerateDirectories(sourceDirectory))
+            CopyDirectory(
+                directoryPath,
+                Path.Combine(destinationDirectory, Path.GetFileName(directoryPath)));
     }
 
     private static string SanitizeFileName(string value)

@@ -49,6 +49,8 @@
             <Setter Property="MinWidth" Value="34"/>
             <Setter Property="Height" Value="32"/>
             <Setter Property="Padding" Value="0"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Foreground" Value="#FFE7E2E4"/>
             <Setter Property="Template">
@@ -238,6 +240,206 @@
             </Setter>
         </Style>
 
+        <Style x:Key="DarkComboBoxStyle" TargetType="ComboBox">
+            <Style.Resources>
+                <SolidColorBrush x:Key="{x:Static SystemColors.WindowBrushKey}" Color="#FF202024"/>
+                <SolidColorBrush x:Key="{x:Static SystemColors.ControlBrushKey}" Color="#FF202024"/>
+                <SolidColorBrush x:Key="{x:Static SystemColors.ControlLightBrushKey}" Color="#FF202024"/>
+                <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" Color="#FF3A3A40"/>
+                <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}" Color="#FFE7E2E4"/>
+            </Style.Resources>
+            <Setter Property="Height" Value="34"/>
+            <Setter Property="Foreground" Value="#FFE7E2E4"/>
+            <Setter Property="Background" Value="#FF242427"/>
+            <Setter Property="BorderBrush" Value="#FF3B3B40"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="MaxDropDownHeight" Value="260"/>
+            <Setter Property="ItemTemplate">
+                <Setter.Value>
+                    <DataTemplate>
+                        <TextBlock Text="{Binding}"
+                                   FontFamily="{Binding}"
+                                   Foreground="#FFE7E2E4"
+                                   Background="Transparent"/>
+                    </DataTemplate>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBox">
+                        <Grid>
+                            <ToggleButton IsChecked="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}"
+                                          Focusable="False">
+                                <ToggleButton.Template>
+                                    <ControlTemplate TargetType="ToggleButton">
+                                        <Border x:Name="ComboSurface"
+                                                Background="#FF242427"
+                                                BorderBrush="#FF3B3B40"
+                                                BorderThickness="1"
+                                                CornerRadius="6">
+                                            <Grid Margin="10,0,9,0">
+                                                <ContentPresenter Content="{Binding SelectionBoxItem, RelativeSource={RelativeSource AncestorType=ComboBox}}"
+                                                                  TextElement.Foreground="#FFE7E2E4"
+                                                                  VerticalAlignment="Center"
+                                                                  HorizontalAlignment="Left"/>
+                                                <iconPacks:PackIconLucide Kind="ChevronDown"
+                                                                          Width="14"
+                                                                          Height="14"
+                                                                          Foreground="#FFA9A2A5"
+                                                                          HorizontalAlignment="Right"
+                                                                          VerticalAlignment="Center"/>
+                                            </Grid>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="ComboSurface" Property="Background" Value="#FF303034"/>
+                                                <Setter TargetName="ComboSurface" Property="BorderBrush" Value="#FF4A4A50"/>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </ToggleButton.Template>
+                            </ToggleButton>
+                            <Popup IsOpen="{TemplateBinding IsDropDownOpen}"
+                                   Placement="Bottom"
+                                   AllowsTransparency="True"
+                                   Focusable="False">
+                                <Border MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}"
+                                        Margin="0,4,0,0"
+                                        Padding="4"
+                                        CornerRadius="6"
+                                        Background="#FF202024"
+                                        BorderBrush="#FF3B3B40"
+                                        BorderThickness="1">
+                                    <ScrollViewer MaxHeight="260"
+                                                  Background="#FF202024"
+                                                  VerticalScrollBarVisibility="Auto">
+                                        <ItemsPresenter/>
+                                    </ScrollViewer>
+                                </Border>
+                            </Popup>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="ItemContainerStyle">
+                <Setter.Value>
+                    <Style TargetType="ComboBoxItem">
+                        <Setter Property="Height" Value="32"/>
+                        <Setter Property="Padding" Value="10,0"/>
+                        <Setter Property="Foreground" Value="#FFE7E2E4"/>
+                        <Setter Property="Background" Value="#FF202024"/>
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="ComboBoxItem">
+                                    <Border x:Name="ItemSurface"
+                                            CornerRadius="4"
+                                            Background="#FF202024">
+                                        <ContentPresenter Margin="{TemplateBinding Padding}"
+                                                          TextElement.Foreground="#FFE7E2E4"
+                                                          VerticalAlignment="Center"/>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="ItemSurface" Property="Background" Value="#FF303034"/>
+                                        </Trigger>
+                                        <Trigger Property="IsSelected" Value="True">
+                                            <Setter TargetName="ItemSurface" Property="Background" Value="#FF3A3A40"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                    </Style>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style TargetType="TextBox">
+            <Setter Property="Foreground" Value="#FFE7E2E4"/>
+            <Setter Property="Background" Value="#FF242427"/>
+            <Setter Property="BorderBrush" Value="#FF3B3B40"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CaretBrush" Value="#FFE7E2E4"/>
+            <Setter Property="SelectionBrush" Value="#FF62505A"/>
+            <Setter Property="Padding" Value="8,3"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TextBox">
+                        <Border x:Name="TextBoxSurface"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="5">
+                            <ScrollViewer x:Name="PART_ContentHost"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="TextBoxSurface" Property="Background" Value="#FF2B2B30"/>
+                                <Setter TargetName="TextBoxSurface" Property="BorderBrush" Value="#FF4A4A50"/>
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="TextBoxSurface" Property="BorderBrush" Value="#FF62505A"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style TargetType="Slider">
+            <Setter Property="Foreground" Value="#FF8C727E"/>
+            <Setter Property="Background" Value="#FF2A2A2E"/>
+            <Setter Property="Height" Value="22"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Slider">
+                        <Grid Height="22">
+                            <Track x:Name="PART_Track" VerticalAlignment="Center" Height="22">
+                                <Track.DecreaseRepeatButton>
+                                    <RepeatButton Command="Slider.DecreaseLarge" Height="22" Background="Transparent" BorderThickness="0">
+                                        <RepeatButton.Template>
+                                            <ControlTemplate TargetType="RepeatButton">
+                                                <Border Height="4" CornerRadius="2" Background="#FF8C727E"/>
+                                            </ControlTemplate>
+                                        </RepeatButton.Template>
+                                    </RepeatButton>
+                                </Track.DecreaseRepeatButton>
+                                <Track.IncreaseRepeatButton>
+                                    <RepeatButton Command="Slider.IncreaseLarge" Height="22" Background="Transparent" BorderThickness="0">
+                                        <RepeatButton.Template>
+                                            <ControlTemplate TargetType="RepeatButton">
+                                                <Border Height="4" CornerRadius="2" Background="#FF2A2A2E"/>
+                                            </ControlTemplate>
+                                        </RepeatButton.Template>
+                                    </RepeatButton>
+                                </Track.IncreaseRepeatButton>
+                                <Track.Thumb>
+                                    <Thumb Width="14" Height="14">
+                                        <Thumb.Template>
+                                            <ControlTemplate TargetType="Thumb">
+                                                <Border x:Name="ThumbBody"
+                                                        Width="14"
+                                                        Height="14"
+                                                        CornerRadius="7"
+                                                        Background="#FFE1DADD"
+                                                        BorderBrush="#FF8C727E"
+                                                        BorderThickness="1"/>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter TargetName="ThumbBody" Property="Background" Value="#FFFFFFFF"/>
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Thumb.Template>
+                                    </Thumb>
+                                </Track.Thumb>
+                            </Track>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <Style x:Key="UpdateActionButtonStyle" TargetType="Button">
             <Setter Property="MinWidth" Value="126"/>
             <Setter Property="Height" Value="34"/>
@@ -310,7 +512,11 @@
                                    VerticalAlignment="Center"/>
                     </StackPanel>
                     <Button Content="×" Style="{StaticResource WindowCloseButtonStyle}"
-                            HorizontalAlignment="Right" FontSize="20" Click="CloseButton_Click"/>
+                            HorizontalAlignment="Right"
+                            VerticalAlignment="Center"
+                            Padding="0,-2,0,0"
+                            FontSize="20"
+                            Click="CloseButton_Click"/>
                 </Grid>
             </Border>
 
@@ -428,6 +634,7 @@
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
                             <RowDefinition Height="*"/>
                             <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
@@ -446,9 +653,51 @@
                                 <TextBlock x:Name="PanelCountText" Foreground="#FFCFC7CA" FontSize="11"/>
                             </Border>
                         </Grid>
-                        <Border Grid.Row="1" Height="1" Margin="4,0,4,14" Background="#FF343035"/>
+                        <Border Grid.Row="1" Margin="4,0,8,14" Padding="14,12" CornerRadius="8"
+                                Background="#FF1E1E21" BorderBrush="#FF303035" BorderThickness="1">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="38"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <iconPacks:PackIconLucide Kind="LayoutDashboard"
+                                                          Width="20"
+                                                          Height="20"
+                                                          Foreground="#FFCFC7CA"
+                                                          VerticalAlignment="Top"/>
+                                <StackPanel Grid.Column="1" Margin="0,0,18,0">
+                                    <TextBlock Text="Układy paneli" FontWeight="SemiBold"/>
+                                    <TextBlock Text="Zapisuj i przełączaj różne rozmieszczenia paneli."
+                                               Margin="0,6,0,10"
+                                               Foreground="#FFA9A2A5"
+                                               FontSize="10.5"/>
+                                    <ComboBox x:Name="LayoutComboBox"
+                                              Height="34"
+                                              MinWidth="260"
+                                              MaxWidth="420"
+                                              HorizontalAlignment="Left"
+                                              Style="{StaticResource LanguageComboBoxStyle}"
+                                              DisplayMemberPath="DisplayName"
+                                              SelectedValuePath="Id"
+                                              SelectionChanged="LayoutComboBox_SelectionChanged"/>
+                                </StackPanel>
+                                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Bottom">
+                                    <Button Content="Zarządzaj panelami"
+                                            MinWidth="112"
+                                            Margin="0,0,10,0"
+                                            Click="ApplyLayoutButton_Click"/>
+                                    <Button Content="Zapisz aktualny układ"
+                                            MinWidth="146"
+                                            Background="#FF34343A"
+                                            Visibility="Collapsed"
+                                            Click="SaveLayoutButton_Click"/>
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+                        <Border Grid.Row="2" Height="1" Margin="4,0,4,14" Background="#FF343035"/>
                         <ScrollViewer x:Name="PanelsScrollViewer"
-                                      Grid.Row="2"
+                                      Grid.Row="3"
                                       VerticalScrollBarVisibility="Auto"
                                       HorizontalScrollBarVisibility="Disabled"
                                       PreviewMouseWheel="PanelsScrollViewer_PreviewMouseWheel">
@@ -501,10 +750,10 @@
                         </ItemsControl.ItemTemplate>
                             </ItemsControl>
                         </ScrollViewer>
-                        <Border Grid.Row="3"
+                        <Border Grid.Row="4"
                                 Background="#FF141416"
                                 Margin="-22,0,-18,-12"/>
-                        <Button Grid.Row="3"
+                        <Button Grid.Row="4"
                                 Height="62"
                                 Width="360"
                                 Margin="0,16,0,0"
@@ -610,8 +859,45 @@
                             <Border Height="1" Margin="0,17,0,0" Background="#FF343035"/>
                         </StackPanel>
 
-                        <Border Grid.Row="1" Padding="16" CornerRadius="8"
+                        <Grid Grid.Row="1" Margin="0,0,0,16" Visibility="Collapsed">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="34"/>
+                                <RowDefinition Height="11"/>
+                            </Grid.RowDefinitions>
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                <RadioButton Content="Tło" Tag="Background" IsChecked="True"
+                                             GroupName="AppearanceSections"
+                                             Style="{StaticResource SettingsTabStyle}"
+                                             Checked="AppearanceSectionTab_Checked"/>
+                                <RadioButton Content="Nagłówek" Tag="Header"
+                                             GroupName="AppearanceSections"
+                                             Style="{StaticResource SettingsTabStyle}"
+                                             Checked="AppearanceSectionTab_Checked"/>
+                                <RadioButton Content="Ikony" Tag="Icons"
+                                             GroupName="AppearanceSections"
+                                             Style="{StaticResource SettingsTabStyle}"
+                                             Checked="AppearanceSectionTab_Checked"/>
+                            </StackPanel>
+                            <Border Grid.Row="1" Height="1" Margin="0,10,0,0" Background="#FF343035"/>
+                        </Grid>
+
+                        <ScrollViewer Grid.Row="2"
+                                      Grid.RowSpan="3"
+                                      VerticalScrollBarVisibility="Auto"
+                                      HorizontalScrollBarVisibility="Disabled">
+                            <Grid Margin="0,0,8,0">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+
+                        <StackPanel x:Name="AppearanceHeaderSection"
+                                    Grid.Row="1"
+                                    Margin="0,10,0,0">
+                        <Border Padding="16" CornerRadius="8"
                                 Background="#FF1E1E21" BorderBrush="#FF303035" BorderThickness="1">
+                            <StackPanel>
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="38"/>
@@ -632,10 +918,97 @@
                                               Unchecked="AppearanceOption_Changed"/>
                                 </StackPanel>
                             </Grid>
+                            <Border Height="1" Margin="0,16,0,16" Background="#FF343035"/>
+                            <StackPanel x:Name="AppearanceHeaderControls" Margin="38,0,0,0">
+                                <TextBlock Text="Czcionka" Foreground="#FFA9A2A5"/>
+                                <ComboBox x:Name="AppearanceHeaderFontComboBox"
+                                          Style="{StaticResource DarkComboBoxStyle}"
+                                          Height="34"
+                                          Margin="0,6,0,16"
+                                          SelectionChanged="AppearanceOption_Changed"/>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="24"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel>
+                                        <TextBlock Text="Kolor tekstu" Foreground="#FFA9A2A5"/>
+                                        <Grid Margin="0,7,0,14">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="14"/>
+                                                <ColumnDefinition Width="54"/>
+                                            </Grid.ColumnDefinitions>
+                                            <Border Height="34"
+                                                    Padding="9,0"
+                                                    Background="#FF242427"
+                                                    BorderBrush="#FF3B3B40"
+                                                    BorderThickness="1"
+                                                    CornerRadius="4"
+                                                    Cursor="Hand"
+                                                    MouseLeftButtonDown="AppearanceFontColorPreview_MouseLeftButtonDown">
+                                                <TextBlock x:Name="AppearanceFontColorText"
+                                                           Foreground="#FFE7E2E4"
+                                                           VerticalAlignment="Center"
+                                                           IsHitTestVisible="False"/>
+                                            </Border>
+                                            <Border x:Name="AppearanceFontColorPreview"
+                                                    Grid.Column="2"
+                                                    CornerRadius="5"
+                                                    BorderBrush="#FF4B474B"
+                                                    BorderThickness="1"
+                                                    Cursor="Hand"
+                                                    MouseLeftButtonDown="AppearanceFontColorPreview_MouseLeftButtonDown"/>
+                                        </Grid>
+                                    </StackPanel>
+                                    <CheckBox x:Name="AppearanceBoldFontCheckBox"
+                                              Grid.Column="2"
+                                              Content="Pogrubienie"
+                                              Style="{StaticResource CompactCheckBoxStyle}"
+                                              VerticalAlignment="Center"
+                                              Checked="AppearanceOption_Changed"
+                                              Unchecked="AppearanceOption_Changed"/>
+                                </Grid>
+                                <Grid>
+                                    <TextBlock Text="Odstęp między literami"
+                                               Foreground="#FFA9A2A5"
+                                               VerticalAlignment="Center"/>
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                        <TextBox x:Name="AppearanceLetterSpacingValueText"
+                                                 Width="66"
+                                                 Height="28"
+                                                 Padding="7,2"
+                                                 HorizontalContentAlignment="Right"
+                                                 VerticalContentAlignment="Center"
+                                                 LostKeyboardFocus="AppearancePixelValueTextBox_LostKeyboardFocus"
+                                                 KeyDown="AppearancePixelValueTextBox_KeyDown"/>
+                                        <TextBlock Text="px" Margin="6,0,0,0"
+                                                   Foreground="#FFA9A2A5"
+                                                   VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Grid>
+                                <Slider x:Name="AppearanceLetterSpacingSlider"
+                                        Minimum="-2"
+                                        Maximum="8"
+                                        TickFrequency="0.25"
+                                        Margin="0,10,0,0"
+                                        ValueChanged="AppearanceSlider_ValueChanged"/>
+                                <Button Content="Przywróć domyślny nagłówek"
+                                        MinWidth="220"
+                                        Margin="0,18,0,0"
+                                        HorizontalAlignment="Left"
+                                        Click="ResetAppearanceHeaderButton_Click"/>
+                            </StackPanel>
+                            </StackPanel>
                         </Border>
+                        </StackPanel>
 
-                        <Border Grid.Row="2" Margin="0,10,0,0" Padding="16" CornerRadius="8"
+                        <StackPanel x:Name="AppearanceBackgroundSection"
+                                    Grid.Row="0">
+                        <Border Padding="16" CornerRadius="8"
                                 Background="#FF1E1E21" BorderBrush="#FF303035" BorderThickness="1">
+                            <StackPanel>
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="38"/>
@@ -648,7 +1021,7 @@
                                                           Foreground="#FFCFC7CA"
                                                           VerticalAlignment="Top"/>
                                 <StackPanel Grid.Column="1" Margin="0,0,14,0">
-                                    <TextBlock Text="Kolor panelu" FontWeight="SemiBold"/>
+                                    <TextBlock Text="Tło" FontWeight="SemiBold"/>
                                     <Border Height="34"
                                             Margin="0,12,0,0"
                                             Padding="9,0"
@@ -677,7 +1050,222 @@
                                         VerticalAlignment="Bottom"
                                         MouseLeftButtonDown="AppearanceBackgroundColorPreview_MouseLeftButtonDown"/>
                             </Grid>
+                            <Border Height="1" Margin="0,16,0,16" Background="#FF343035"/>
+                            <StackPanel Margin="38,0,0,0">
+                                <Grid>
+                                    <TextBlock Text="Zaokrąglenie"
+                                               Foreground="#FFA9A2A5"
+                                               VerticalAlignment="Center"/>
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                        <TextBox x:Name="AppearanceBorderRadiusValueText"
+                                                 Width="66"
+                                                 Height="28"
+                                                 Padding="7,2"
+                                                 HorizontalContentAlignment="Right"
+                                                 VerticalContentAlignment="Center"
+                                                 LostKeyboardFocus="AppearancePixelValueTextBox_LostKeyboardFocus"
+                                                 KeyDown="AppearancePixelValueTextBox_KeyDown"/>
+                                        <TextBlock Text="px" Margin="6,0,0,0"
+                                                   Foreground="#FFA9A2A5"
+                                                   VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Grid>
+                                <Slider x:Name="AppearanceBorderRadiusSlider"
+                                        Minimum="0"
+                                        Maximum="30"
+                                        TickFrequency="1"
+                                        Margin="0,10,0,16"
+                                        ValueChanged="AppearanceSlider_ValueChanged"/>
+                                <Grid>
+                                    <TextBlock Text="Grubość obramowania"
+                                               Foreground="#FFA9A2A5"
+                                               VerticalAlignment="Center"/>
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                        <TextBox x:Name="AppearanceBorderThicknessValueText"
+                                                 Width="66"
+                                                 Height="28"
+                                                 Padding="7,2"
+                                                 HorizontalContentAlignment="Right"
+                                                 VerticalContentAlignment="Center"
+                                                 LostKeyboardFocus="AppearancePixelValueTextBox_LostKeyboardFocus"
+                                                 KeyDown="AppearancePixelValueTextBox_KeyDown"/>
+                                        <TextBlock Text="px" Margin="6,0,0,0"
+                                                   Foreground="#FFA9A2A5"
+                                                   VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Grid>
+                                <Slider x:Name="AppearanceBorderThicknessSlider"
+                                        Minimum="0"
+                                        Maximum="8"
+                                        TickFrequency="0.5"
+                                        Margin="0,10,0,16"
+                                        ValueChanged="AppearanceSlider_ValueChanged"/>
+                                <TextBlock Text="Kolor obramowania" Foreground="#FFA9A2A5"/>
+                                <Grid Margin="0,7,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="14"/>
+                                        <ColumnDefinition Width="54"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Border Height="34"
+                                            Padding="9,0"
+                                            Background="#FF242427"
+                                            BorderBrush="#FF3B3B40"
+                                            BorderThickness="1"
+                                            CornerRadius="4"
+                                            Cursor="Hand"
+                                            MouseLeftButtonDown="AppearanceBorderColorPreview_MouseLeftButtonDown">
+                                        <TextBlock x:Name="AppearanceBorderColorText"
+                                                   Foreground="#FFE7E2E4"
+                                                   VerticalAlignment="Center"
+                                                   IsHitTestVisible="False"/>
+                                    </Border>
+                                    <Border x:Name="AppearanceBorderColorPreview"
+                                            Grid.Column="2"
+                                            CornerRadius="5"
+                                            BorderBrush="#FF4B474B"
+                                            BorderThickness="1"
+                                            Cursor="Hand"
+                                            MouseLeftButtonDown="AppearanceBorderColorPreview_MouseLeftButtonDown"/>
+                                </Grid>
+                                <Button Content="Przywróć domyślne tło"
+                                        MinWidth="190"
+                                        Margin="0,18,0,0"
+                                        HorizontalAlignment="Left"
+                                        Click="ResetAppearanceBackgroundButton_Click"/>
+                            </StackPanel>
+                            </StackPanel>
                         </Border>
+                        </StackPanel>
+
+                        <StackPanel x:Name="AppearanceIconsSection"
+                                    Grid.Row="2"
+                                    Margin="0,10,0,0">
+                            <Border Padding="16" CornerRadius="8"
+                                    Background="#FF1E1E21" BorderBrush="#FF303035" BorderThickness="1">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="38"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <iconPacks:PackIconLucide Kind="MousePointerClick"
+                                                              Width="20"
+                                                              Height="20"
+                                                              Foreground="#FFCFC7CA"
+                                                              VerticalAlignment="Top"/>
+                                <StackPanel Grid.Column="1">
+                                    <TextBlock Text="Ikony" FontWeight="SemiBold"/>
+                                    <TextBlock Text="Czcionka podpisów"
+                                               Margin="0,14,0,0"
+                                               Foreground="#FFA9A2A5"/>
+                                    <ComboBox x:Name="AppearanceIconFontComboBox"
+                                              Style="{StaticResource DarkComboBoxStyle}"
+                                              Height="34"
+                                              Margin="0,6,0,16"
+                                              SelectionChanged="AppearanceOption_Changed"/>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="24"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel>
+                                            <TextBlock Text="Kolor tekstu" Foreground="#FFA9A2A5"/>
+                                            <Grid Margin="0,7,0,14">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="14"/>
+                                                    <ColumnDefinition Width="54"/>
+                                                </Grid.ColumnDefinitions>
+                                                <Border Height="34"
+                                                        Padding="9,0"
+                                                        Background="#FF242427"
+                                                        BorderBrush="#FF3B3B40"
+                                                        BorderThickness="1"
+                                                        CornerRadius="4"
+                                                        Cursor="Hand"
+                                                        MouseLeftButtonDown="AppearanceIconFontColorPreview_MouseLeftButtonDown">
+                                                    <TextBlock x:Name="AppearanceIconFontColorText"
+                                                               Foreground="#FFE7E2E4"
+                                                               VerticalAlignment="Center"
+                                                               IsHitTestVisible="False"/>
+                                                </Border>
+                                                <Border x:Name="AppearanceIconFontColorPreview"
+                                                        Grid.Column="2"
+                                                        CornerRadius="5"
+                                                        BorderBrush="#FF4B474B"
+                                                        BorderThickness="1"
+                                                        Cursor="Hand"
+                                                        MouseLeftButtonDown="AppearanceIconFontColorPreview_MouseLeftButtonDown"/>
+                                            </Grid>
+                                        </StackPanel>
+                                        <CheckBox x:Name="AppearanceIconBoldFontCheckBox"
+                                                  Grid.Column="2"
+                                                  Content="Pogrubienie"
+                                                  Style="{StaticResource CompactCheckBoxStyle}"
+                                                  VerticalAlignment="Center"
+                                                  Checked="AppearanceOption_Changed"
+                                                  Unchecked="AppearanceOption_Changed"/>
+                                    </Grid>
+                                    <Grid>
+                                        <TextBlock Text="Odstęp między literami"
+                                                   Foreground="#FFA9A2A5"
+                                                   VerticalAlignment="Center"/>
+                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                            <TextBox x:Name="AppearanceIconLetterSpacingValueText"
+                                                     Width="66"
+                                                     Height="28"
+                                                     Padding="7,2"
+                                                     HorizontalContentAlignment="Right"
+                                                     VerticalContentAlignment="Center"
+                                                     LostKeyboardFocus="AppearancePixelValueTextBox_LostKeyboardFocus"
+                                                     KeyDown="AppearancePixelValueTextBox_KeyDown"/>
+                                            <TextBlock Text="px" Margin="6,0,0,0"
+                                                       Foreground="#FFA9A2A5"
+                                                       VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                    </Grid>
+                                    <Slider x:Name="AppearanceIconLetterSpacingSlider"
+                                            Minimum="-2"
+                                            Maximum="8"
+                                            TickFrequency="0.25"
+                                            Margin="0,10,0,16"
+                                            ValueChanged="AppearanceSlider_ValueChanged"/>
+                                    <Grid>
+                                        <TextBlock Text="Wielkość ikon"
+                                                   Foreground="#FFA9A2A5"
+                                                   VerticalAlignment="Center"/>
+                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                            <TextBox x:Name="AppearanceIconSizeValueText"
+                                                     Width="66"
+                                                     Height="28"
+                                                     Padding="7,2"
+                                                     HorizontalContentAlignment="Right"
+                                                     VerticalContentAlignment="Center"
+                                                     LostKeyboardFocus="AppearancePixelValueTextBox_LostKeyboardFocus"
+                                                     KeyDown="AppearancePixelValueTextBox_KeyDown"/>
+                                            <TextBlock Text="px" Margin="6,0,0,0"
+                                                       Foreground="#FFA9A2A5"
+                                                       VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                    </Grid>
+                                    <Slider x:Name="AppearanceIconSizeSlider"
+                                            Minimum="24"
+                                            Maximum="64"
+                                            TickFrequency="1"
+                                            Margin="0,10,0,0"
+                                            ValueChanged="AppearanceSlider_ValueChanged"/>
+                                    <Button Content="Przywróć domyślne ikony"
+                                            MinWidth="210"
+                                            Margin="0,18,0,0"
+                                            HorizontalAlignment="Left"
+                                            Click="ResetAppearanceIconsButton_Click"/>
+                                </StackPanel>
+                                </Grid>
+                            </Border>
+                        </StackPanel>
+                            </Grid>
+                        </ScrollViewer>
 
                         <StackPanel Grid.Row="5" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
                             <Button x:Name="CancelAppearanceButton"

@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -18,11 +19,31 @@ public partial class PanelsWindow : Window
     private bool _appearanceHideHeader;
     private Color _appearanceBackgroundColor;
     private double _appearanceBackgroundOpacity;
+    private double _appearanceBorderRadius;
+    private double _appearanceBorderThickness;
+    private Color _appearanceBorderColor;
+    private double _appearanceBorderOpacity;
+    private string _appearanceFontFamilyName = "Segoe UI Variable Text";
+    private Color _appearanceFontColor;
+    private double _appearanceFontOpacity;
+    private bool _appearanceFontBold;
+    private double _appearanceLetterSpacing;
+    private string _appearanceIconFontFamilyName = "Segoe UI Variable Text";
+    private Color _appearanceIconFontColor;
+    private double _appearanceIconFontOpacity;
+    private bool _appearanceIconFontBold;
+    private double _appearanceIconLetterSpacing;
+    private double _appearanceIconSize;
+    private AppearanceState _committedAppearance = null!;
     private bool _suppressAppearanceEvents;
     private bool _isResizing;
     private Point _resizeStartScreenPosition;
     private double _resizeStartWidth;
     private double _resizeStartHeight;
+    private bool _suppressLayoutSelection;
+    private IReadOnlyList<LayoutOverviewItem> _layouts = [];
+    private string? _activeLayoutId;
+    private LayoutManageWindow? _layoutManageWindow;
     private readonly DispatcherTimer _panelsSmoothScrollTimer = new()
     {
         Interval = TimeSpan.FromMilliseconds(16)
@@ -34,16 +55,38 @@ public partial class PanelsWindow : Window
     public event EventHandler<PanelVisibilityChangedEventArgs>? PanelVisibilityChanged;
     public event EventHandler<PanelEditRequestedEventArgs>? EditPanelRequested;
     public event EventHandler? NewPanelRequested;
+    public event EventHandler<LayoutSelectedEventArgs>? ApplyLayoutRequested;
+    public event EventHandler<LayoutRenameRequestedEventArgs>? RenameLayoutRequested;
+    public event EventHandler<LayoutDeleteRequestedEventArgs>? DeleteLayoutRequested;
+    public event EventHandler<LayoutDuplicateRequestedEventArgs>? DuplicateLayoutRequested;
+    public event EventHandler? AddLayoutRequested;
     public event EventHandler<GlobalAppearanceEventArgs>? GlobalAppearanceChanged;
     public event EventHandler? RefreshIconsRequested;
     public event EventHandler<ActivationModeChangedEventArgs>? ActivationModeChanged;
 
     public PanelsWindow(
         IReadOnlyList<PanelOverviewItem> panels,
+        IReadOnlyList<LayoutOverviewItem> layouts,
+        string? activeLayoutId,
         bool useDoubleClickToOpen,
         bool hideHeader,
         Color backgroundColor,
         double backgroundOpacity,
+        double borderRadius,
+        double borderThickness,
+        Color borderColor,
+        double borderOpacity,
+        string fontFamilyName,
+        Color fontColor,
+        double fontOpacity,
+        bool fontBold,
+        double letterSpacing,
+        string iconFontFamilyName,
+        Color iconFontColor,
+        double iconFontOpacity,
+        bool iconFontBold,
+        double iconLetterSpacing,
+        double iconSize,
         Func<string, bool, Task<ConfigurationArchiveResult>> exportConfiguration,
         Func<string, bool, string?, Task<ConfigurationArchiveResult>> importConfiguration)
     {
@@ -52,21 +95,40 @@ public partial class PanelsWindow : Window
         _appearanceHideHeader = hideHeader;
         _appearanceBackgroundColor = backgroundColor;
         _appearanceBackgroundOpacity = backgroundOpacity;
+        _appearanceBorderRadius = borderRadius;
+        _appearanceBorderThickness = borderThickness;
+        _appearanceBorderColor = borderColor;
+        _appearanceBorderOpacity = borderOpacity;
+        _appearanceFontFamilyName = fontFamilyName;
+        _appearanceFontColor = fontColor;
+        _appearanceFontOpacity = fontOpacity;
+        _appearanceFontBold = fontBold;
+        _appearanceLetterSpacing = letterSpacing;
+        _appearanceIconFontFamilyName = iconFontFamilyName;
+        _appearanceIconFontColor = iconFontColor;
+        _appearanceIconFontOpacity = iconFontOpacity;
+        _appearanceIconFontBold = iconFontBold;
+        _appearanceIconLetterSpacing = iconLetterSpacing;
+        _appearanceIconSize = iconSize;
+        _committedAppearance = CreateAppearanceStateFromFields();
         InitializeComponent();
         Icon = AppIconProvider.Image;
         _panelsSmoothScrollTimer.Tick += PanelsSmoothScrollTimer_Tick;
         DoubleClickActivationCheckBox.IsChecked = useDoubleClickToOpen;
         AppearanceHideHeaderCheckBox.IsChecked = hideHeader;
-        UpdateAppearanceColorPreview();
+        InitializeAppearanceControls();
         LanguageComboBox.ItemsSource = LocalizationService.Languages;
         LanguageComboBox.SelectedValue = LocalizationService.CurrentLanguage;
         CurrentVersionText.Text = UpdateService.FormatVersion(UpdateService.CurrentVersion);
         UpdatePanels(panels);
+        UpdateLayouts(layouts, activeLayoutId);
         Closed += (_, _) =>
         {
             _panelsSmoothScrollTimer.Stop();
             _embeddedWallpaperWindow?.DisposeEmbedded();
             _embeddedWallpaperWindow = null;
+            _layoutManageWindow?.Close();
+            _layoutManageWindow = null;
         };
 
         _ = ApplyStartupUpdateStatusAsync();
@@ -125,6 +187,19 @@ public partial class PanelsWindow : Window
         };
     }
 
+    public void UpdateLayouts(IReadOnlyList<LayoutOverviewItem> layouts, string? activeLayoutId)
+    {
+        _layouts = layouts;
+        _activeLayoutId = activeLayoutId;
+        _suppressLayoutSelection = true;
+        LayoutComboBox.ItemsSource = layouts;
+        LayoutComboBox.SelectedValue = activeLayoutId;
+        if (LayoutComboBox.SelectedItem is null && layouts.Count > 0)
+            LayoutComboBox.SelectedIndex = 0;
+        _suppressLayoutSelection = false;
+        _layoutManageWindow?.UpdateLayouts(layouts);
+    }
+
     private async void SettingsTab_Checked(object sender, RoutedEventArgs e)
     {
         if (GeneralTabContent is null || PanelsTabContent is null ||
@@ -164,47 +239,227 @@ public partial class PanelsWindow : Window
         if (!IsLoaded || _suppressAppearanceEvents)
             return;
 
+        ReadAppearanceControls();
+        UpdateAppearancePreviews();
+        UpdateAppearanceHeaderControlsState();
         SetAppearanceActionButtonsVisible(true);
         RaiseGlobalAppearance(GlobalAppearancePhase.Preview);
     }
 
+    private void AppearanceSectionTab_Checked(object sender, RoutedEventArgs e)
+    {
+        if (AppearanceBackgroundSection is null || AppearanceHeaderSection is null || AppearanceIconsSection is null)
+            return;
+
+        AppearanceBackgroundSection.Visibility = Visibility.Visible;
+        AppearanceHeaderSection.Visibility = Visibility.Visible;
+        AppearanceIconsSection.Visibility = Visibility.Visible;
+    }
+
+    private void InitializeAppearanceControls()
+    {
+        _suppressAppearanceEvents = true;
+
+        var fonts = Fonts.SystemFontFamilies
+            .Select(font => font.Source)
+            .Distinct(StringComparer.CurrentCultureIgnoreCase)
+            .OrderBy(name => name, StringComparer.CurrentCultureIgnoreCase)
+            .ToList();
+
+        AppearanceHeaderFontComboBox.ItemsSource = fonts;
+        AppearanceIconFontComboBox.ItemsSource = fonts;
+        AppearanceHeaderFontComboBox.SelectedItem = fonts.FirstOrDefault(name =>
+            string.Equals(name, _appearanceFontFamilyName, StringComparison.CurrentCultureIgnoreCase))
+            ?? fonts.FirstOrDefault(name => name.StartsWith("Segoe UI", StringComparison.CurrentCultureIgnoreCase))
+            ?? fonts.FirstOrDefault();
+        AppearanceIconFontComboBox.SelectedItem = fonts.FirstOrDefault(name =>
+            string.Equals(name, _appearanceIconFontFamilyName, StringComparison.CurrentCultureIgnoreCase))
+            ?? fonts.FirstOrDefault(name => name.StartsWith("Segoe UI", StringComparison.CurrentCultureIgnoreCase))
+            ?? fonts.FirstOrDefault();
+
+        AppearanceHideHeaderCheckBox.IsChecked = _appearanceHideHeader;
+        AppearanceBoldFontCheckBox.IsChecked = _appearanceFontBold;
+        AppearanceIconBoldFontCheckBox.IsChecked = _appearanceIconFontBold;
+        AppearanceBorderRadiusSlider.Value = Math.Clamp(_appearanceBorderRadius, AppearanceBorderRadiusSlider.Minimum, AppearanceBorderRadiusSlider.Maximum);
+        AppearanceBorderThicknessSlider.Value = Math.Clamp(_appearanceBorderThickness, AppearanceBorderThicknessSlider.Minimum, AppearanceBorderThicknessSlider.Maximum);
+        AppearanceLetterSpacingSlider.Value = Math.Clamp(_appearanceLetterSpacing, AppearanceLetterSpacingSlider.Minimum, AppearanceLetterSpacingSlider.Maximum);
+        AppearanceIconLetterSpacingSlider.Value = Math.Clamp(_appearanceIconLetterSpacing, AppearanceIconLetterSpacingSlider.Minimum, AppearanceIconLetterSpacingSlider.Maximum);
+        AppearanceIconSizeSlider.Value = Math.Clamp(_appearanceIconSize, AppearanceIconSizeSlider.Minimum, AppearanceIconSizeSlider.Maximum);
+
+        UpdateAppearanceValueTexts();
+        UpdateAppearancePreviews();
+        UpdateAppearanceHeaderControlsState();
+        AppearanceBackgroundSection.Visibility = Visibility.Visible;
+        AppearanceHeaderSection.Visibility = Visibility.Visible;
+        AppearanceIconsSection.Visibility = Visibility.Visible;
+        _suppressAppearanceEvents = false;
+    }
+
+    private void UpdateAppearanceValueTexts()
+    {
+        AppearanceBorderRadiusValueText.Text = Math.Round(AppearanceBorderRadiusSlider.Value).ToString(CultureInfo.CurrentCulture);
+        AppearanceBorderThicknessValueText.Text = AppearanceBorderThicknessSlider.Value.ToString("0.#", CultureInfo.CurrentCulture);
+        AppearanceLetterSpacingValueText.Text = AppearanceLetterSpacingSlider.Value.ToString("0.##", CultureInfo.CurrentCulture);
+        AppearanceIconLetterSpacingValueText.Text = AppearanceIconLetterSpacingSlider.Value.ToString("0.##", CultureInfo.CurrentCulture);
+        AppearanceIconSizeValueText.Text = Math.Round(AppearanceIconSizeSlider.Value).ToString(CultureInfo.CurrentCulture);
+    }
+
+    private void AppearanceSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (AppearanceBorderRadiusValueText is null)
+            return;
+
+        UpdateAppearanceValueTexts();
+        AppearanceOption_Changed(sender, e);
+    }
+
+    private void AppearancePixelValueTextBox_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Enter)
+            return;
+
+        ApplyAppearanceTextBoxValue(sender as TextBox);
+        e.Handled = true;
+    }
+
+    private void AppearancePixelValueTextBox_LostKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e) =>
+        ApplyAppearanceTextBoxValue(sender as TextBox);
+
+    private void ApplyAppearanceTextBoxValue(TextBox? textBox)
+    {
+        if (textBox is null)
+            return;
+
+        var slider = textBox.Name switch
+        {
+            nameof(AppearanceBorderRadiusValueText) => AppearanceBorderRadiusSlider,
+            nameof(AppearanceBorderThicknessValueText) => AppearanceBorderThicknessSlider,
+            nameof(AppearanceLetterSpacingValueText) => AppearanceLetterSpacingSlider,
+            nameof(AppearanceIconLetterSpacingValueText) => AppearanceIconLetterSpacingSlider,
+            nameof(AppearanceIconSizeValueText) => AppearanceIconSizeSlider,
+            _ => null
+        };
+
+        if (slider is null)
+            return;
+
+        if (!double.TryParse(textBox.Text.Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out var value))
+        {
+            UpdateAppearanceValueTexts();
+            return;
+        }
+
+        slider.Value = Math.Clamp(value, slider.Minimum, slider.Maximum);
+        UpdateAppearanceValueTexts();
+        AppearanceOption_Changed(slider, new RoutedEventArgs());
+    }
+
+    private void ReadAppearanceControls()
+    {
+        _appearanceHideHeader = AppearanceHideHeaderCheckBox.IsChecked == true;
+        _appearanceBorderRadius = AppearanceBorderRadiusSlider.Value;
+        _appearanceBorderThickness = AppearanceBorderThicknessSlider.Value;
+        _appearanceFontFamilyName = AppearanceHeaderFontComboBox.SelectedItem as string ?? "Segoe UI Variable Text";
+        _appearanceFontBold = AppearanceBoldFontCheckBox.IsChecked == true;
+        _appearanceLetterSpacing = AppearanceLetterSpacingSlider.Value;
+        _appearanceIconFontFamilyName = AppearanceIconFontComboBox.SelectedItem as string ?? "Segoe UI Variable Text";
+        _appearanceIconFontBold = AppearanceIconBoldFontCheckBox.IsChecked == true;
+        _appearanceIconLetterSpacing = AppearanceIconLetterSpacingSlider.Value;
+        _appearanceIconSize = AppearanceIconSizeSlider.Value;
+    }
+
+    private void UpdateAppearanceHeaderControlsState()
+    {
+        if (AppearanceHeaderControls is null)
+            return;
+
+        var enabled = AppearanceHideHeaderCheckBox.IsChecked != true;
+        AppearanceHeaderControls.IsEnabled = enabled;
+        AppearanceHeaderControls.Opacity = enabled ? 1 : 0.42;
+    }
+
     private void AppearanceBackgroundColorPreview_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        var originalColor = _appearanceBackgroundColor;
-        var originalOpacity = _appearanceBackgroundOpacity;
-        var picker = new ColorPickerWindow(_appearanceBackgroundColor, _appearanceBackgroundOpacity)
+        PickAppearanceColor(
+            _appearanceBackgroundColor,
+            _appearanceBackgroundOpacity,
+            (color, opacity) =>
+            {
+                _appearanceBackgroundColor = color;
+                _appearanceBackgroundOpacity = opacity;
+            });
+    }
+
+    private void AppearanceBorderColorPreview_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        PickAppearanceColor(
+            _appearanceBorderColor,
+            _appearanceBorderOpacity,
+            (color, opacity) =>
+            {
+                _appearanceBorderColor = color;
+                _appearanceBorderOpacity = opacity;
+            });
+    }
+
+    private void AppearanceFontColorPreview_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        PickAppearanceColor(
+            _appearanceFontColor,
+            _appearanceFontOpacity,
+            (color, opacity) =>
+            {
+                _appearanceFontColor = color;
+                _appearanceFontOpacity = opacity;
+            });
+    }
+
+    private void AppearanceIconFontColorPreview_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        PickAppearanceColor(
+            _appearanceIconFontColor,
+            _appearanceIconFontOpacity,
+            (color, opacity) =>
+            {
+                _appearanceIconFontColor = color;
+                _appearanceIconFontOpacity = opacity;
+            });
+    }
+
+    private void PickAppearanceColor(Color initialColor, double initialOpacity, Action<Color, double> apply)
+    {
+        var before = CreateAppearanceStateFromFields();
+        var picker = new ColorPickerWindow(initialColor, initialOpacity)
         {
             Owner = this
         };
 
         picker.PreviewChanged += (_, preview) =>
         {
-            _appearanceBackgroundColor = preview.Color;
-            _appearanceBackgroundOpacity = preview.Opacity;
-            UpdateAppearanceColorPreview();
+            apply(preview.Color, preview.Opacity);
+            UpdateAppearancePreviews();
             SetAppearanceActionButtonsVisible(true);
             RaiseGlobalAppearance(GlobalAppearancePhase.Preview);
         };
 
         if (picker.ShowDialog() != true)
         {
-            _appearanceBackgroundColor = originalColor;
-            _appearanceBackgroundOpacity = originalOpacity;
-            UpdateAppearanceColorPreview();
+            ApplyAppearanceStateToFields(before);
+            UpdateAppearancePreviews();
             RaiseGlobalAppearance(GlobalAppearancePhase.Preview);
             return;
         }
 
-        _appearanceBackgroundColor = picker.SelectedColor;
-        _appearanceBackgroundOpacity = picker.SelectedOpacity;
-        UpdateAppearanceColorPreview();
+        apply(picker.SelectedColor, picker.SelectedOpacity);
+        UpdateAppearancePreviews();
         SetAppearanceActionButtonsVisible(true);
         RaiseGlobalAppearance(GlobalAppearancePhase.Preview);
     }
 
     private void SaveAppearanceButton_Click(object sender, RoutedEventArgs e)
     {
-        _appearanceHideHeader = AppearanceHideHeaderCheckBox.IsChecked == true;
+        ReadAppearanceControls();
+        _committedAppearance = CreateAppearanceStateFromFields();
         SetAppearanceActionButtonsVisible(false);
         RaiseGlobalAppearance(GlobalAppearancePhase.Commit);
     }
@@ -212,10 +467,10 @@ public partial class PanelsWindow : Window
     private void CancelAppearanceButton_Click(object sender, RoutedEventArgs e)
     {
         RaiseGlobalAppearance(GlobalAppearancePhase.Cancel);
+        ApplyAppearanceStateToFields(_committedAppearance);
         _suppressAppearanceEvents = true;
-        AppearanceHideHeaderCheckBox.IsChecked = _appearanceHideHeader;
+        InitializeAppearanceControls();
         _suppressAppearanceEvents = false;
-        UpdateAppearanceColorPreview();
         SetAppearanceActionButtonsVisible(false);
     }
 
@@ -226,7 +481,7 @@ public partial class PanelsWindow : Window
         SaveAppearanceButton.Visibility = visibility;
     }
 
-    private void UpdateAppearanceColorPreview()
+    private void UpdateAppearancePreviews()
     {
         AppearanceBackgroundColorText.Text =
             $"#{_appearanceBackgroundColor.R:X2}{_appearanceBackgroundColor.G:X2}{_appearanceBackgroundColor.B:X2}";
@@ -235,6 +490,30 @@ public partial class PanelsWindow : Window
             _appearanceBackgroundColor.R,
             _appearanceBackgroundColor.G,
             _appearanceBackgroundColor.B));
+
+        AppearanceBorderColorText.Text =
+            $"#{_appearanceBorderColor.R:X2}{_appearanceBorderColor.G:X2}{_appearanceBorderColor.B:X2}";
+        AppearanceBorderColorPreview.Background = new SolidColorBrush(Color.FromArgb(
+            (byte)Math.Round(_appearanceBorderOpacity * 255),
+            _appearanceBorderColor.R,
+            _appearanceBorderColor.G,
+            _appearanceBorderColor.B));
+
+        AppearanceFontColorText.Text =
+            $"#{_appearanceFontColor.R:X2}{_appearanceFontColor.G:X2}{_appearanceFontColor.B:X2}";
+        AppearanceFontColorPreview.Background = new SolidColorBrush(Color.FromArgb(
+            (byte)Math.Round(_appearanceFontOpacity * 255),
+            _appearanceFontColor.R,
+            _appearanceFontColor.G,
+            _appearanceFontColor.B));
+
+        AppearanceIconFontColorText.Text =
+            $"#{_appearanceIconFontColor.R:X2}{_appearanceIconFontColor.G:X2}{_appearanceIconFontColor.B:X2}";
+        AppearanceIconFontColorPreview.Background = new SolidColorBrush(Color.FromArgb(
+            (byte)Math.Round(_appearanceIconFontOpacity * 255),
+            _appearanceIconFontColor.R,
+            _appearanceIconFontColor.G,
+            _appearanceIconFontColor.B));
     }
 
     private void RaiseGlobalAppearance(GlobalAppearancePhase phase) =>
@@ -243,8 +522,103 @@ public partial class PanelsWindow : Window
             AppearanceHideHeaderCheckBox.IsChecked == true,
             _appearanceBackgroundColor,
             _appearanceBackgroundOpacity,
-            true,
-            true));
+            _appearanceBorderRadius,
+            _appearanceBorderThickness,
+            _appearanceBorderColor,
+            _appearanceBorderOpacity,
+            _appearanceFontFamilyName,
+            _appearanceFontColor,
+            _appearanceFontOpacity,
+            _appearanceFontBold,
+            _appearanceLetterSpacing,
+            _appearanceIconFontFamilyName,
+            _appearanceIconFontColor,
+            _appearanceIconFontOpacity,
+            _appearanceIconFontBold,
+            _appearanceIconLetterSpacing,
+            _appearanceIconSize));
+
+    private void ResetAppearanceBackgroundButton_Click(object sender, RoutedEventArgs e)
+    {
+        _appearanceBackgroundColor = Color.FromRgb(0x0B, 0x0E, 0x12);
+        _appearanceBackgroundOpacity = 0.58;
+        _appearanceBorderRadius = 11;
+        _appearanceBorderThickness = 0;
+        _appearanceBorderColor = Colors.White;
+        _appearanceBorderOpacity = 0;
+        InitializeAppearanceControls();
+        SetAppearanceActionButtonsVisible(true);
+        RaiseGlobalAppearance(GlobalAppearancePhase.Preview);
+    }
+
+    private void ResetAppearanceHeaderButton_Click(object sender, RoutedEventArgs e)
+    {
+        _appearanceHideHeader = false;
+        _appearanceFontFamilyName = "Segoe UI Variable Text";
+        _appearanceFontColor = Color.FromRgb(0xF7, 0xF9, 0xFC);
+        _appearanceFontOpacity = 1;
+        _appearanceFontBold = false;
+        _appearanceLetterSpacing = 0;
+        InitializeAppearanceControls();
+        SetAppearanceActionButtonsVisible(true);
+        RaiseGlobalAppearance(GlobalAppearancePhase.Preview);
+    }
+
+    private void ResetAppearanceIconsButton_Click(object sender, RoutedEventArgs e)
+    {
+        _appearanceIconFontFamilyName = "Segoe UI Variable Text";
+        _appearanceIconFontColor = Color.FromRgb(0xF7, 0xF9, 0xFC);
+        _appearanceIconFontOpacity = 1;
+        _appearanceIconFontBold = false;
+        _appearanceIconLetterSpacing = 0;
+        _appearanceIconSize = 42;
+        InitializeAppearanceControls();
+        SetAppearanceActionButtonsVisible(true);
+        RaiseGlobalAppearance(GlobalAppearancePhase.Preview);
+    }
+
+    private AppearanceState CreateAppearanceStateFromFields() =>
+        new(
+            _appearanceHideHeader,
+            _appearanceBackgroundColor,
+            _appearanceBackgroundOpacity,
+            _appearanceBorderRadius,
+            _appearanceBorderThickness,
+            _appearanceBorderColor,
+            _appearanceBorderOpacity,
+            _appearanceFontFamilyName,
+            _appearanceFontColor,
+            _appearanceFontOpacity,
+            _appearanceFontBold,
+            _appearanceLetterSpacing,
+            _appearanceIconFontFamilyName,
+            _appearanceIconFontColor,
+            _appearanceIconFontOpacity,
+            _appearanceIconFontBold,
+            _appearanceIconLetterSpacing,
+            _appearanceIconSize);
+
+    private void ApplyAppearanceStateToFields(AppearanceState state)
+    {
+        _appearanceHideHeader = state.HideHeader;
+        _appearanceBackgroundColor = state.BackgroundColor;
+        _appearanceBackgroundOpacity = state.BackgroundOpacity;
+        _appearanceBorderRadius = state.BorderRadius;
+        _appearanceBorderThickness = state.BorderThickness;
+        _appearanceBorderColor = state.BorderColor;
+        _appearanceBorderOpacity = state.BorderOpacity;
+        _appearanceFontFamilyName = state.FontFamilyName;
+        _appearanceFontColor = state.FontColor;
+        _appearanceFontOpacity = state.FontOpacity;
+        _appearanceFontBold = state.FontBold;
+        _appearanceLetterSpacing = state.LetterSpacing;
+        _appearanceIconFontFamilyName = state.IconFontFamilyName;
+        _appearanceIconFontColor = state.IconFontColor;
+        _appearanceIconFontOpacity = state.IconFontOpacity;
+        _appearanceIconFontBold = state.IconFontBold;
+        _appearanceIconLetterSpacing = state.IconLetterSpacing;
+        _appearanceIconSize = state.IconSize;
+    }
 
     private async Task EnsureWallpaperTabLoadedAsync()
     {
@@ -483,6 +857,55 @@ public partial class PanelsWindow : Window
     private void AddPanelButton_Click(object sender, RoutedEventArgs e) =>
         NewPanelRequested?.Invoke(this, EventArgs.Empty);
 
+    private void SaveLayoutButton_Click(object sender, RoutedEventArgs e)
+    {
+    }
+
+    private void ApplyLayoutButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_layoutManageWindow is null)
+        {
+            _layoutManageWindow = new LayoutManageWindow(_layouts)
+            {
+                Owner = this
+            };
+            _layoutManageWindow.RenameRequested += (_, args) =>
+                RenameLayoutRequested?.Invoke(this, args);
+            _layoutManageWindow.DeleteRequested += (_, args) =>
+                DeleteLayoutRequested?.Invoke(this, args);
+            _layoutManageWindow.DuplicateRequested += (_, args) =>
+                DuplicateLayoutRequested?.Invoke(this, args);
+            _layoutManageWindow.AddRequested += (_, _) =>
+                AddLayoutRequested?.Invoke(this, EventArgs.Empty);
+            _layoutManageWindow.Closed += (_, _) => _layoutManageWindow = null;
+        }
+        else
+        {
+            _layoutManageWindow.UpdateLayouts(_layouts);
+        }
+
+        if (!_layoutManageWindow.IsVisible)
+            _layoutManageWindow.Show();
+
+        _layoutManageWindow.Topmost = true;
+        _layoutManageWindow.Topmost = false;
+        _layoutManageWindow.Activate();
+        _layoutManageWindow.Focus();
+    }
+
+    private void LayoutComboBox_SelectionChanged(
+        object sender,
+        System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (!IsLoaded || _suppressLayoutSelection || LayoutComboBox.SelectedValue is not string layoutId)
+            return;
+
+        if (string.Equals(layoutId, _activeLayoutId, StringComparison.Ordinal))
+            return;
+
+        ApplyLayoutRequested?.Invoke(this, new LayoutSelectedEventArgs(layoutId));
+    }
+
     private void RefreshIconsButton_Click(object sender, RoutedEventArgs e) =>
         RefreshIconsRequested?.Invoke(this, EventArgs.Empty);
 
@@ -582,6 +1005,8 @@ public partial class PanelsWindow : Window
             return;
 
         LocalizationService.SetLanguage(languageCode);
+        UpdateLayouts(_layouts, _activeLayoutId);
+        _layoutManageWindow?.UpdateLayouts(_layouts);
     }
 }
 
@@ -602,3 +1027,39 @@ public sealed record PanelVisibilityChangedEventArgs(string PanelKey, bool IsHid
 public sealed record PanelEditRequestedEventArgs(string PanelKey);
 
 public sealed record ActivationModeChangedEventArgs(bool UseDoubleClickToOpen);
+
+public sealed record LayoutOverviewItem(string Id, string Name, bool IsActive)
+{
+    public string DisplayName
+    {
+        get
+        {
+            var name = LocalizationService.T(Name);
+            return IsActive ? $"{name} • {LocalizationService.T("aktywny")}" : name;
+        }
+    }
+}
+
+public sealed record LayoutSelectedEventArgs(string LayoutId);
+
+public sealed record LayoutDuplicateRequestedEventArgs(string LayoutId);
+
+internal sealed record AppearanceState(
+    bool HideHeader,
+    Color BackgroundColor,
+    double BackgroundOpacity,
+    double BorderRadius,
+    double BorderThickness,
+    Color BorderColor,
+    double BorderOpacity,
+    string FontFamilyName,
+    Color FontColor,
+    double FontOpacity,
+    bool FontBold,
+    double LetterSpacing,
+    string IconFontFamilyName,
+    Color IconFontColor,
+    double IconFontOpacity,
+    bool IconFontBold,
+    double IconLetterSpacing,
+    double IconSize);
