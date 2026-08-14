@@ -38,10 +38,14 @@
 - Adjustable icon size and single-click or double-click activation
 - Add files, apps, and shortcuts to panels with drag and drop
 - Manage, show, hide, create, and remove panels from one management window
+- Save multiple panel layouts and switch between them from the management window
+- Assign global keyboard shortcuts to switch panel layouts instantly
 - Apply shared appearance settings across all panels from the management window
+- Smooth scrolling across management, appearance, wallpaper, and panel views
 - Browse Wallhaven wallpapers with search and filters inside the management window
 - Preview, download, and set wallpapers without leaving the app
 - System tray controls and optional Windows startup
+- Lightweight download statistics helper for GitHub release downloads
 - Clean Lucide outline icons
 - Import and export configuration as a ZIP archive
 - Automatic settings backup

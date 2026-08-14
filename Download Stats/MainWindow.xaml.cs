@@ -18,6 +18,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "My Fancy Fences Stats");
     private static readonly string HistoryFilePath = Path.Combine(HistoryDirectory, "download-history.json");
+    private static readonly string LogFilePath = Path.Combine(HistoryDirectory, "stats-error.log");
 
     private int _totalDownloads;
     private int _todayDownloads;
@@ -87,7 +88,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
         catch (Exception exception)
         {
-            Status = $"Nie udało się pobrać statystyk: {exception.Message}";
+            await WriteLogAsync(exception);
+            Status = $"Nie udało się pobrać statystyk: {exception.Message} · log: {LogFilePath}";
         }
         finally
         {
@@ -178,13 +180,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private static string DetectVariant(string assetName)
     {
-        if (assetName.Contains("requires", StringComparison.OrdinalIgnoreCase) ||
-            assetName.Contains("net10", StringComparison.OrdinalIgnoreCase))
-            return "requires-net10";
         if (assetName.Contains("with", StringComparison.OrdinalIgnoreCase) ||
             assetName.Contains("portable", StringComparison.OrdinalIgnoreCase) ||
             assetName.Contains("self-contained", StringComparison.OrdinalIgnoreCase))
             return "with-net10";
+        if (assetName.Contains("requires", StringComparison.OrdinalIgnoreCase) ||
+            assetName.Contains("net10", StringComparison.OrdinalIgnoreCase))
+            return "requires-net10";
         return "unknown";
     }
 
@@ -202,15 +204,26 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 RedirectStandardOutput = true,
                 RedirectStandardError = true
             }) ?? throw new InvalidOperationException("Nie udało się uruchomić GitHub CLI.");
+
             var outputTask = process.StandardOutput.ReadToEndAsync();
             var errorTask = process.StandardError.ReadToEndAsync();
-            await process.WaitForExitAsync();
-            var output = await outputTask;
-            var error = await errorTask;
-            if (process.ExitCode == 0)
-                return JsonSerializer.Deserialize<List<GitHubRelease>>(output) ?? [];
-            if (!string.IsNullOrWhiteSpace(error))
-                throw new InvalidOperationException(error.Trim());
+            using var ghTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+
+            try
+            {
+                await process.WaitForExitAsync(ghTimeout.Token);
+                var output = await outputTask;
+                var error = await errorTask;
+                if (process.ExitCode == 0)
+                    return JsonSerializer.Deserialize<List<GitHubRelease>>(output) ?? [];
+                if (!string.IsNullOrWhiteSpace(error))
+                    await WriteLogAsync(new InvalidOperationException($"GitHub CLI fallback: {error.Trim()}"));
+            }
+            catch (OperationCanceledException)
+            {
+                TryKill(process);
+                await WriteLogAsync(new TimeoutException("GitHub CLI nie odpowiedziało w 15 sekund. Używam publicznego API jako fallback."));
+            }
         }
 
         using var response = await Client.GetAsync(
@@ -251,6 +264,34 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         catch
         {
             return false;
+        }
+    }
+
+    private static void TryKill(Process process)
+    {
+        try
+        {
+            if (!process.HasExited)
+                process.Kill(entireProcessTree: true);
+        }
+        catch
+        {
+            // ignored
+        }
+    }
+
+    private static async Task WriteLogAsync(Exception exception)
+    {
+        try
+        {
+            Directory.CreateDirectory(HistoryDirectory);
+            await File.AppendAllTextAsync(
+                LogFilePath,
+                $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} {exception}\n\n");
+        }
+        catch
+        {
+            // ignored
         }
     }
 

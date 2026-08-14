@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
@@ -33,6 +33,12 @@ public partial class MainWindow : Window
     private const uint SwpNoMove = 0x0002;
     private const uint SwpNoSize = 0x0001;
     private const uint WmTrayIcon = 0x8001;
+    private const int WmHotKey = 0x0312;
+    private const uint ModAlt = 0x0001;
+    private const uint ModControl = 0x0002;
+    private const uint ModShift = 0x0004;
+    private const uint ModWin = 0x0008;
+    private const int LayoutHotkeyIdBase = 0x6600;
     private const uint WmRightButtonUp = 0x0205;
     private const uint WmContextMenu = 0x007B;
     private const uint WmNull = 0x0000;
@@ -130,6 +136,8 @@ public partial class MainWindow : Window
     private readonly List<MainWindow> _additionalPanels = [];
     private List<SavedPanelSettings> _savedAdditionalPanels = [];
     private List<SavedLayoutSettings> _savedLayouts = [];
+    private Dictionary<string, KeyboardShortcut> _layoutShortcuts = [];
+    private readonly Dictionary<int, string> _registeredLayoutHotkeys = [];
     private string? _activeLayoutId;
     private string? _visibleLayoutId;
     private bool _isApplicationClosing;
@@ -192,6 +200,7 @@ public partial class MainWindow : Window
                 if (!_skipSaveOnShutdown)
                     SaveSettings();
                 SystemEvents.PowerModeChanged -= SystemEvents_PowerModeChanged;
+                UnregisterLayoutHotkeys();
                 RemoveTrayIcon();
                 _trayMessageSource?.RemoveHook(WindowMessageHook);
                 _trayMessageSource?.Dispose();
@@ -221,7 +230,7 @@ public partial class MainWindow : Window
 
             EnsureLayoutDefaults();
             if (hadSavedLayouts && !string.IsNullOrWhiteSpace(_activeLayoutId))
-                ApplySavedLayout(_activeLayoutId);
+                ApplySavedLayout(_activeLayoutId, force: true);
             else
                 SaveSettings();
             CleanupLegacyPanelFolders();
@@ -293,6 +302,7 @@ public partial class MainWindow : Window
             _taskbarCreatedMessage = RegisterWindowMessage("TaskbarCreated");
             SystemEvents.PowerModeChanged += SystemEvents_PowerModeChanged;
             AddTrayIcon();
+            RegisterLayoutHotkeys();
         }
     }
 
@@ -306,6 +316,18 @@ public partial class MainWindow : Window
         if (_taskbarCreatedMessage != 0 && message == _taskbarCreatedMessage)
         {
             _ = RestoreTrayIconAfterShellChangeAsync();
+            return IntPtr.Zero;
+        }
+
+        if (message == WmHotKey)
+        {
+            var hotkeyId = wParam.ToInt32();
+            if (_registeredLayoutHotkeys.TryGetValue(hotkeyId, out var layoutId))
+            {
+                ApplySavedLayout(layoutId);
+                handled = true;
+            }
+
             return IntPtr.Zero;
         }
 
@@ -355,6 +377,61 @@ public partial class MainWindow : Window
 
         RemoveTrayIcon();
         AddTrayIcon();
+        RegisterLayoutHotkeys();
+    }
+
+    private void RegisterLayoutHotkeys()
+    {
+        if (!_isPrimaryWindow || _trayWindowHandle == IntPtr.Zero)
+            return;
+
+        UnregisterLayoutHotkeys();
+
+        var index = 0;
+        foreach (var (layoutId, shortcut) in _layoutShortcuts)
+        {
+            if (_savedLayouts.All(layout => layout.Id != layoutId))
+                continue;
+
+            var hotkeyId = LayoutHotkeyIdBase + index++;
+            var modifiers = ToNativeModifiers(shortcut.Modifiers);
+            var virtualKey = (uint)KeyInterop.VirtualKeyFromKey(shortcut.Key);
+            if (modifiers == 0 || virtualKey == 0)
+                continue;
+
+            if (!RegisterHotKey(_trayWindowHandle, hotkeyId, modifiers, virtualKey))
+                continue;
+
+            _registeredLayoutHotkeys[hotkeyId] = layoutId;
+        }
+    }
+
+    private void UnregisterLayoutHotkeys()
+    {
+        if (_trayWindowHandle == IntPtr.Zero)
+        {
+            _registeredLayoutHotkeys.Clear();
+            return;
+        }
+
+        foreach (var hotkeyId in _registeredLayoutHotkeys.Keys.ToList())
+            UnregisterHotKey(_trayWindowHandle, hotkeyId);
+
+        _registeredLayoutHotkeys.Clear();
+    }
+
+    private static uint ToNativeModifiers(ModifierKeys modifiers)
+    {
+        uint native = 0;
+        if (modifiers.HasFlag(ModifierKeys.Alt))
+            native |= ModAlt;
+        if (modifiers.HasFlag(ModifierKeys.Control))
+            native |= ModControl;
+        if (modifiers.HasFlag(ModifierKeys.Shift))
+            native |= ModShift;
+        if (modifiers.HasFlag(ModifierKeys.Windows))
+            native |= ModWin;
+        return native;
     }
 
     private void AddTrayIcon()
@@ -729,7 +806,7 @@ public partial class MainWindow : Window
         if (desktopItems.Count == 0)
         {
             desktopItems.Add(new DesktopItem(
-                $"Aby dodaÄ‡ skrĂłt kliknij tutaj{Environment.NewLine}albo przeciÄ…gnij ikonÄ™",
+                $"Aby dodać skrót kliknij tutaj{Environment.NewLine}albo przeciągnij ikonę",
                 AddShortcutPlaceholderPath,
                 CreateAddShortcutIcon()));
         }
@@ -882,7 +959,7 @@ public partial class MainWindow : Window
         }
         catch
         {
-            // Diagnostyka nie może przerwać ładowania następnych ikon.
+            // Diagnostyka nie moĹĽe przerwaÄ‡ Ĺ‚adowania nastÄ™pnych ikon.
         }
     }
 
@@ -911,7 +988,7 @@ public partial class MainWindow : Window
         }
         catch
         {
-            // Brak dostępu do obserwowania folderu nie powinien zatrzymać panelu.
+            // Brak dostÄ™pu do obserwowania folderu nie powinien zatrzymaÄ‡ panelu.
         }
     }
 
@@ -2184,6 +2261,7 @@ public partial class MainWindow : Window
                 _savedLayouts = layoutsDocument?.Layouts ?? [];
                 _activeLayoutId = layoutsDocument?.ActiveLayoutId;
                 _visibleLayoutId = _activeLayoutId;
+                _layoutShortcuts = LoadLayoutShortcutDictionary(layoutsDocument?.Shortcuts);
                 NormalizeSavedLayouts();
                 return;
             }
@@ -2196,6 +2274,7 @@ public partial class MainWindow : Window
         _savedLayouts = settings.Layouts ?? [];
         _activeLayoutId = settings.ActiveLayoutId;
         _visibleLayoutId = _activeLayoutId;
+        _layoutShortcuts = [];
         NormalizeSavedLayouts();
     }
 
@@ -2210,6 +2289,30 @@ public partial class MainWindow : Window
                     .ToList()
             })
             .ToList();
+        _layoutShortcuts = _layoutShortcuts
+            .Where(pair => _savedLayouts.Any(layout => layout.Id == pair.Key))
+            .ToDictionary(pair => pair.Key, pair => pair.Value);
+    }
+
+    private static Dictionary<string, KeyboardShortcut> LoadLayoutShortcutDictionary(
+        List<SavedLayoutShortcut>? shortcuts)
+    {
+        if (shortcuts is null)
+            return [];
+
+        return shortcuts
+            .Where(shortcut =>
+                !string.IsNullOrWhiteSpace(shortcut.LayoutId) &&
+                KeyboardShortcut.IsAllowed(shortcut.Key, shortcut.Modifiers))
+            .GroupBy(shortcut => shortcut.LayoutId, StringComparer.Ordinal)
+            .ToDictionary(
+                group => group.Key,
+                group =>
+                {
+                    var shortcut = group.Last();
+                    return new KeyboardShortcut(shortcut.Modifiers, shortcut.Key);
+                },
+                StringComparer.Ordinal);
     }
 
     private static SavedPanelSettings NormalizeSavedPanelShortcuts(SavedPanelSettings settings) =>
@@ -2322,7 +2425,12 @@ public partial class MainWindow : Window
                 JsonSerializer.Serialize(settings, JsonOptions));
             File.WriteAllText(
                 LayoutsFilePath,
-                JsonSerializer.Serialize(new SavedLayoutsDocument(_visibleLayoutId ?? _activeLayoutId, layoutsToSave), JsonOptions));
+                JsonSerializer.Serialize(
+                    new SavedLayoutsDocument(
+                        _visibleLayoutId ?? _activeLayoutId,
+                        layoutsToSave,
+                        CreateSavedLayoutShortcuts()),
+                    JsonOptions));
         }
         catch
         {
@@ -2421,7 +2529,13 @@ public partial class MainWindow : Window
 
     private sealed record SavedLayoutsDocument(
         string? ActiveLayoutId,
-        List<SavedLayoutSettings>? Layouts);
+        List<SavedLayoutSettings>? Layouts,
+        List<SavedLayoutShortcut>? Shortcuts = null);
+
+    private sealed record SavedLayoutShortcut(
+        string LayoutId,
+        ModifierKeys Modifiers,
+        Key Key);
 
     private sealed record SavedPanelSettings(
         string Title,
@@ -2679,6 +2793,15 @@ public partial class MainWindow : Window
                 .ToList() ?? []
         };
 
+    private List<SavedLayoutShortcut> CreateSavedLayoutShortcuts() =>
+        _layoutShortcuts
+            .Where(pair => _savedLayouts.Any(layout => layout.Id == pair.Key))
+            .Select(pair => new SavedLayoutShortcut(
+                pair.Key,
+                pair.Value.Modifiers,
+                pair.Value.Key))
+            .ToList();
+
     private void UpdateActiveLayoutSnapshot()
     {
         var layoutId = _visibleLayoutId ?? _activeLayoutId;
@@ -2728,8 +2851,15 @@ public partial class MainWindow : Window
         _panelsWindow?.UpdateLayouts(CreateLayoutOverviewList(), _activeLayoutId);
     }
 
-    private void ApplySavedLayout(string layoutId)
+    private void ApplySavedLayout(string layoutId, bool force = false)
     {
+        if (!force &&
+            string.Equals(_activeLayoutId, layoutId, StringComparison.Ordinal) &&
+            string.Equals(_visibleLayoutId, layoutId, StringComparison.Ordinal))
+        {
+            return;
+        }
+
         if (!string.Equals(_activeLayoutId, layoutId, StringComparison.Ordinal))
             UpdateActiveLayoutSnapshot();
 
@@ -2853,6 +2983,7 @@ public partial class MainWindow : Window
 
         var wasActive = string.Equals(_activeLayoutId, layoutId, StringComparison.Ordinal);
         _savedLayouts.RemoveAt(index);
+        _layoutShortcuts.Remove(layoutId);
 
         if (wasActive)
         {
@@ -2862,7 +2993,9 @@ public partial class MainWindow : Window
         }
 
         SaveSettings();
+        RegisterLayoutHotkeys();
         _panelsWindow?.UpdateLayouts(CreateLayoutOverviewList(), _activeLayoutId);
+        _panelsWindow?.UpdateLayoutShortcuts(_layoutShortcuts);
     }
 
     private void UpdateCreatorPanelVisibility()
@@ -2910,6 +3043,7 @@ public partial class MainWindow : Window
                 panels,
                 CreateLayoutOverviewList(),
                 _activeLayoutId,
+                _layoutShortcuts,
                 _useDoubleClickToOpen,
                 _isHeaderHidden,
                 _backgroundColor,
@@ -2943,6 +3077,10 @@ public partial class MainWindow : Window
                 DuplicateSavedLayout(args.LayoutId);
             _panelsWindow.AddLayoutRequested += (_, _) =>
                 AddNewLayoutFromCurrent();
+            _panelsWindow.LayoutShortcutEditRequested += (_, args) =>
+                EditLayoutShortcut(args.LayoutId);
+            _panelsWindow.LayoutShortcutDeleteRequested += (_, args) =>
+                DeleteLayoutShortcut(args.LayoutId);
             _panelsWindow.GlobalAppearanceChanged += PanelsWindow_GlobalAppearanceChanged;
             _panelsWindow.RefreshIconsRequested += (_, _) => RefreshAllPanelIcons();
             _panelsWindow.ActivationModeChanged += (_, args) =>
@@ -2953,6 +3091,7 @@ public partial class MainWindow : Window
         {
             _panelsWindow.UpdatePanels(panels);
             _panelsWindow.UpdateLayouts(CreateLayoutOverviewList(), _activeLayoutId);
+            _panelsWindow.UpdateLayoutShortcuts(_layoutShortcuts);
         }
 
         if (!_panelsWindow.IsVisible)
@@ -2965,6 +3104,47 @@ public partial class MainWindow : Window
         _panelsWindow.Topmost = false;
         _panelsWindow.Activate();
         _panelsWindow.Focus();
+    }
+
+    private void EditLayoutShortcut(string layoutId)
+    {
+        var layout = _savedLayouts.FirstOrDefault(item => item.Id == layoutId);
+        if (layout is null)
+            return;
+
+        _layoutShortcuts.TryGetValue(layoutId, out var currentShortcut);
+        var dialog = new ShortcutCaptureWindow(LocalizationService.T(layout.Name), currentShortcut)
+        {
+            Owner = _panelsWindow
+        };
+
+        if (dialog.ShowDialog() != true || dialog.Shortcut is null)
+            return;
+
+        foreach (var existing in _layoutShortcuts
+                     .Where(pair => pair.Key != layoutId &&
+                                    pair.Value.Modifiers == dialog.Shortcut.Modifiers &&
+                                    pair.Value.Key == dialog.Shortcut.Key)
+                     .Select(pair => pair.Key)
+                     .ToList())
+        {
+            _layoutShortcuts.Remove(existing);
+        }
+
+        _layoutShortcuts[layoutId] = dialog.Shortcut;
+        SaveSettings();
+        RegisterLayoutHotkeys();
+        _panelsWindow?.UpdateLayoutShortcuts(_layoutShortcuts);
+    }
+
+    private void DeleteLayoutShortcut(string layoutId)
+    {
+        if (!_layoutShortcuts.Remove(layoutId))
+            return;
+
+        SaveSettings();
+        RegisterLayoutHotkeys();
+        _panelsWindow?.UpdateLayoutShortcuts(_layoutShortcuts);
     }
 
     private Task<ConfigurationArchiveResult> ExportConfigurationAsync(
@@ -3040,8 +3220,6 @@ public partial class MainWindow : Window
         _savedLayouts
             .Select(layout =>
             {
-                var suffix = layout.Id == _activeLayoutId ? " • aktywny" : string.Empty;
-                _ = suffix;
                 return new LayoutOverviewItem(
                     layout.Id,
                     layout.Name,
@@ -3543,6 +3721,16 @@ public partial class MainWindow : Window
     [DllImport("user32.dll")]
     private static extern bool PostMessage(IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
 
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool RegisterHotKey(
+        IntPtr window,
+        int id,
+        uint modifiers,
+        uint virtualKey);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool UnregisterHotKey(IntPtr window, int id);
+
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern uint RegisterWindowMessage(string message);
 
@@ -3583,3 +3771,4 @@ internal sealed record GlobalPanelAppearanceSnapshot(
     bool IconFontBold,
     double IconLetterSpacing,
     double IconSize);
+

@@ -10,6 +10,8 @@ public partial class App : Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        SmoothScrollService.Register();
+
         _singleInstanceMutex = new Mutex(
             initiallyOwned: true,
             SingleInstanceMutexName,

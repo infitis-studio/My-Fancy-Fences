@@ -547,6 +547,9 @@
                         <RadioButton Content="Import / eksport" Tag="ImportExport"
                                      GroupName="SettingsTabs" Style="{StaticResource SettingsTabStyle}"
                                      Checked="SettingsTab_Checked"/>
+                        <RadioButton Content="Skróty" Tag="Shortcuts"
+                                     GroupName="SettingsTabs" Style="{StaticResource SettingsTabStyle}"
+                                     Checked="SettingsTab_Checked"/>
                         <RadioButton x:Name="UpdatesTabButton" Content="Aktualizacja" Tag="Updates"
                                      GroupName="SettingsTabs" Style="{StaticResource SettingsTabStyle}"
                                      Checked="SettingsTab_Checked"/>
@@ -1344,6 +1347,92 @@
                                    FontSize="11"
                                    TextWrapping="Wrap"/>
                     </StackPanel>
+
+                    <Grid x:Name="ShortcutsTabContent" Margin="4,4,4,0" Visibility="Collapsed">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        <StackPanel Margin="0,0,0,18">
+                            <TextBlock Text="Skróty klawiszowe" FontSize="18" FontWeight="SemiBold"/>
+                            <TextBlock Text="Skróty tworzone są automatycznie dla każdego układu paneli."
+                                       Margin="0,4,0,0"
+                                       Foreground="#FFA9A2A5"
+                                       FontSize="11"/>
+                        </StackPanel>
+                        <ScrollViewer Grid.Row="1"
+                                      VerticalScrollBarVisibility="Auto"
+                                      HorizontalScrollBarVisibility="Disabled">
+                            <ItemsControl x:Name="ShortcutsItemsControl" Margin="0,0,10,0">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Margin="0,0,0,10"
+                                                Padding="14,12"
+                                                CornerRadius="8"
+                                                Background="#FF1E1E21"
+                                                BorderBrush="#FF303035"
+                                                BorderThickness="1">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="38"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <iconPacks:PackIconLucide Kind="Keyboard"
+                                                                          Width="20"
+                                                                          Height="20"
+                                                                          Foreground="#FFCFC7CA"
+                                                                          VerticalAlignment="Top"/>
+                                                <StackPanel Grid.Column="1" Margin="0,0,18,0">
+                                                    <TextBlock Text="{Binding Title}"
+                                                               FontWeight="SemiBold"/>
+                                                    <TextBlock Text="{Binding ShortcutText}"
+                                                               Margin="0,6,0,0"
+                                                               Foreground="{Binding ShortcutBrush}"
+                                                               FontSize="11"/>
+                                                </StackPanel>
+                                                <StackPanel Grid.Column="2"
+                                                            Orientation="Horizontal"
+                                                            VerticalAlignment="Center">
+                                                    <Button Content="Przypisz skrót"
+                                                            MinWidth="118"
+                                                            Visibility="{Binding AssignVisibility}"
+                                                            Tag="{Binding LayoutId}"
+                                                            Click="AssignShortcutButton_Click"/>
+                                                    <Button MinWidth="0"
+                                                            Width="34"
+                                                            Height="30"
+                                                            Padding="0"
+                                                            Margin="0,0,8,0"
+                                                            Visibility="{Binding EditDeleteVisibility}"
+                                                            Tag="{Binding LayoutId}"
+                                                            ToolTip="Edytuj skrót"
+                                                            Click="AssignShortcutButton_Click">
+                                                        <iconPacks:PackIconLucide Kind="Pencil"
+                                                                                  Width="15"
+                                                                                  Height="15"/>
+                                                    </Button>
+                                                    <Button MinWidth="0"
+                                                            Width="34"
+                                                            Height="30"
+                                                            Padding="0"
+                                                            Background="#FF3A2428"
+                                                            Visibility="{Binding EditDeleteVisibility}"
+                                                            Tag="{Binding LayoutId}"
+                                                            ToolTip="Usuń skrót"
+                                                            Click="DeleteShortcutButton_Click">
+                                                        <iconPacks:PackIconLucide Kind="Trash2"
+                                                                                  Width="15"
+                                                                                  Height="15"/>
+                                                    </Button>
+                                                </StackPanel>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </Grid>
 
                     <Grid x:Name="UpdatesTabContent" Margin="4,4,4,0" Visibility="Collapsed">
                         <Grid.RowDefinitions>

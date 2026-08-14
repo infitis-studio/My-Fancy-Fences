@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
@@ -44,6 +44,8 @@ public partial class PanelsWindow : Window
     private IReadOnlyList<LayoutOverviewItem> _layouts = [];
     private string? _activeLayoutId;
     private LayoutManageWindow? _layoutManageWindow;
+    private IReadOnlyDictionary<string, KeyboardShortcut> _layoutShortcutAssignments =
+        new Dictionary<string, KeyboardShortcut>();
     private readonly DispatcherTimer _panelsSmoothScrollTimer = new()
     {
         Interval = TimeSpan.FromMilliseconds(16)
@@ -60,6 +62,8 @@ public partial class PanelsWindow : Window
     public event EventHandler<LayoutDeleteRequestedEventArgs>? DeleteLayoutRequested;
     public event EventHandler<LayoutDuplicateRequestedEventArgs>? DuplicateLayoutRequested;
     public event EventHandler? AddLayoutRequested;
+    public event EventHandler<LayoutShortcutEditRequestedEventArgs>? LayoutShortcutEditRequested;
+    public event EventHandler<LayoutShortcutDeleteRequestedEventArgs>? LayoutShortcutDeleteRequested;
     public event EventHandler<GlobalAppearanceEventArgs>? GlobalAppearanceChanged;
     public event EventHandler? RefreshIconsRequested;
     public event EventHandler<ActivationModeChangedEventArgs>? ActivationModeChanged;
@@ -68,6 +72,7 @@ public partial class PanelsWindow : Window
         IReadOnlyList<PanelOverviewItem> panels,
         IReadOnlyList<LayoutOverviewItem> layouts,
         string? activeLayoutId,
+        IReadOnlyDictionary<string, KeyboardShortcut> layoutShortcuts,
         bool useDoubleClickToOpen,
         bool hideHeader,
         Color backgroundColor,
@@ -110,6 +115,7 @@ public partial class PanelsWindow : Window
         _appearanceIconFontBold = iconFontBold;
         _appearanceIconLetterSpacing = iconLetterSpacing;
         _appearanceIconSize = iconSize;
+        _layoutShortcutAssignments = layoutShortcuts;
         _committedAppearance = CreateAppearanceStateFromFields();
         InitializeComponent();
         Icon = AppIconProvider.Image;
@@ -195,16 +201,24 @@ public partial class PanelsWindow : Window
         LayoutComboBox.ItemsSource = layouts;
         LayoutComboBox.SelectedValue = activeLayoutId;
         if (LayoutComboBox.SelectedItem is null && layouts.Count > 0)
-            LayoutComboBox.SelectedIndex = 0;
+        LayoutComboBox.SelectedIndex = 0;
         _suppressLayoutSelection = false;
         _layoutManageWindow?.UpdateLayouts(layouts);
+        RefreshShortcutItems();
+    }
+
+    public void UpdateLayoutShortcuts(IReadOnlyDictionary<string, KeyboardShortcut> layoutShortcuts)
+    {
+        _layoutShortcutAssignments = layoutShortcuts;
+        RefreshShortcutItems();
     }
 
     private async void SettingsTab_Checked(object sender, RoutedEventArgs e)
     {
         if (GeneralTabContent is null || PanelsTabContent is null ||
             WallpaperTabContent is null || AppearanceTabContent is null ||
-            ImportExportTabContent is null || UpdatesTabContent is null)
+            ImportExportTabContent is null || ShortcutsTabContent is null ||
+            UpdatesTabContent is null)
             return;
 
         var selectedTab = (sender as FrameworkElement)?.Tag as string ?? "General";
@@ -223,6 +237,9 @@ public partial class PanelsWindow : Window
         ImportExportTabContent.Visibility = selectedTab == "ImportExport"
             ? Visibility.Visible
             : Visibility.Collapsed;
+        ShortcutsTabContent.Visibility = selectedTab == "Shortcuts"
+            ? Visibility.Visible
+            : Visibility.Collapsed;
         UpdatesTabContent.Visibility = selectedTab == "Updates"
             ? Visibility.Visible
             : Visibility.Collapsed;
@@ -234,6 +251,26 @@ public partial class PanelsWindow : Window
             await CheckForUpdatesAsync();
     }
 
+    private void RefreshShortcutItems()
+    {
+        if (ShortcutsItemsControl is null)
+            return;
+
+        ShortcutsItemsControl.ItemsSource = _layouts
+            .Select(layout =>
+            {
+                var hasShortcut = _layoutShortcutAssignments.TryGetValue(layout.Id, out var shortcut);
+                var shortcutText = hasShortcut
+                    ? $"Aktywny skrót klawiszowy: {shortcut!.DisplayText}"
+                    : "Brak przypisanego skrótu";
+                return new LayoutShortcutItem(
+                    layout.Id,
+                    $"Przełącz na układ: {LocalizationService.T(layout.Name)}",
+                    shortcutText,
+                    hasShortcut);
+            })
+            .ToList();
+    }
     private void AppearanceOption_Changed(object sender, RoutedEventArgs e)
     {
         if (!IsLoaded || _suppressAppearanceEvents)
@@ -861,6 +898,22 @@ public partial class PanelsWindow : Window
     {
     }
 
+    private void AssignShortcutButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: string layoutId })
+            return;
+
+        LayoutShortcutEditRequested?.Invoke(this, new LayoutShortcutEditRequestedEventArgs(layoutId));
+    }
+
+    private void DeleteShortcutButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: string layoutId })
+            return;
+
+        LayoutShortcutDeleteRequested?.Invoke(this, new LayoutShortcutDeleteRequestedEventArgs(layoutId));
+    }
+
     private void ApplyLayoutButton_Click(object sender, RoutedEventArgs e)
     {
         if (_layoutManageWindow is null)
@@ -1035,14 +1088,33 @@ public sealed record LayoutOverviewItem(string Id, string Name, bool IsActive)
         get
         {
             var name = LocalizationService.T(Name);
-            return IsActive ? $"{name} • {LocalizationService.T("aktywny")}" : name;
+            return IsActive ? $"{name} — {LocalizationService.T("aktywny")}" : name;
         }
     }
+}
+
+public sealed record LayoutShortcutItem(
+    string LayoutId,
+    string Title,
+    string ShortcutText,
+    bool HasShortcut)
+{
+    public Visibility AssignVisibility => HasShortcut ? Visibility.Collapsed : Visibility.Visible;
+
+    public Visibility EditDeleteVisibility => HasShortcut ? Visibility.Visible : Visibility.Collapsed;
+
+    public Brush ShortcutBrush => HasShortcut
+        ? new SolidColorBrush(Color.FromRgb(0x8E, 0xD6, 0xAD))
+        : new SolidColorBrush(Color.FromRgb(0xA9, 0xA2, 0xA5));
 }
 
 public sealed record LayoutSelectedEventArgs(string LayoutId);
 
 public sealed record LayoutDuplicateRequestedEventArgs(string LayoutId);
+
+public sealed record LayoutShortcutEditRequestedEventArgs(string LayoutId);
+
+public sealed record LayoutShortcutDeleteRequestedEventArgs(string LayoutId);
 
 internal sealed record AppearanceState(
     bool HideHeader,
@@ -1063,3 +1135,4 @@ internal sealed record AppearanceState(
     bool IconFontBold,
     double IconLetterSpacing,
     double IconSize);
+

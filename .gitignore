@@ -6,6 +6,7 @@
 build-*/
 publish/
 publish-update/
+Download Stats/publish-fixed/
 
 *.user
 *.suo
