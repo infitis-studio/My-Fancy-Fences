@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net.Http;
 using System.Net;
 using System.Reflection;
@@ -10,8 +11,7 @@ public static class UpdateService
     private static readonly object Sync = new();
     private static Task<UpdateCheckResult>? _cachedCheck;
 
-    public static Version CurrentVersion { get; } =
-        Assembly.GetExecutingAssembly().GetName().Version ?? new Version(0, 1, 0);
+    public static Version CurrentVersion { get; } = ResolveCurrentVersion();
 
     public static string FormatVersion(Version version) =>
         $"v{version.Major}.{version.Minor}.{Math.Max(version.Build, 0)}";
@@ -79,6 +79,42 @@ public static class UpdateService
     {
         var name = $"My-Fancy-Fences-{tag}-{variant}-win-x64.exe";
         return new UpdateAsset(0, name, $"{downloadBase}/{name}", 0);
+    }
+
+    private static Version ResolveCurrentVersion()
+    {
+        var executablePath = Environment.ProcessPath;
+        if (!string.IsNullOrWhiteSpace(executablePath))
+        {
+            var versionInfo = FileVersionInfo.GetVersionInfo(executablePath);
+            if (TryParseVersion(versionInfo.ProductVersion, out var productVersion))
+                return productVersion;
+            if (TryParseVersion(versionInfo.FileVersion, out var fileVersion))
+                return fileVersion;
+        }
+
+        var informationalVersion = Assembly
+            .GetExecutingAssembly()
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
+            ?.InformationalVersion;
+        if (TryParseVersion(informationalVersion, out var assemblyInformationalVersion))
+            return assemblyInformationalVersion;
+
+        return Assembly.GetExecutingAssembly().GetName().Version ?? new Version(0, 1, 0);
+    }
+
+    private static bool TryParseVersion(string? value, out Version version)
+    {
+        version = new Version(0, 0, 0);
+        if (string.IsNullOrWhiteSpace(value))
+            return false;
+
+        var normalized = value.Trim().TrimStart('v', 'V');
+        var metadataIndex = normalized.IndexOfAny(['+', '-', ' ']);
+        if (metadataIndex >= 0)
+            normalized = normalized[..metadataIndex];
+
+        return Version.TryParse(normalized, out version!);
     }
 
     private static HttpClient CreateClient()
