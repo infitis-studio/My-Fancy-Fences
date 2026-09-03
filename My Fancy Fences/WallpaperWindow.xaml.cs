@@ -1,6 +1,9 @@
 using System.Collections.ObjectModel;
+using System.ComponentModel;
+using System.IO;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Windows;
@@ -15,9 +18,17 @@ namespace My_Fancy_Fences;
 public partial class WallpaperWindow : Window
 {
     private const int MaxCachedWallpapers = 144;
+    private const int MaxTags = 5;
     private const double WallpaperCardPitch = 170;
+    private const double VisibleTagsWidth = 145;
     private static readonly HttpClient HttpClient = CreateHttpClient();
+    private static readonly string FavoritesFilePath = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "My Fancy Fences",
+        "wallpaper-favorites.json");
     private readonly List<string> _tags = [];
+    private readonly Dictionary<string, FavoriteWallpaper> _favoriteWallpapers =
+        new(StringComparer.OrdinalIgnoreCase);
     private readonly ObservableCollection<WallpaperCard> _wallpapers = [];
     private string _sorting = "date_added";
     private bool _isLoaded;
@@ -26,20 +37,25 @@ public partial class WallpaperWindow : Window
     private bool _isCustomMaximized;
     private readonly bool _isEmbedded;
     private bool _isResizing;
+    private bool _isFavoritesMode;
+    private bool _suppressFilterEvents;
+    private bool _hasHiddenTags;
     private int _currentPage;
     private Rect _restoreBounds;
     private Point _resizeStartScreenPosition;
     private double _resizeStartWidth;
     private double _resizeStartHeight;
+    private double _visibleTagContentWidth;
     private CancellationTokenSource? _loadCancellation;
 
     private static readonly Brush[] TagColors =
     [
-        new SolidColorBrush(Color.FromRgb(0x3E, 0x8E, 0x82)),
-        new SolidColorBrush(Color.FromRgb(0x5A, 0x70, 0xB8)),
-        new SolidColorBrush(Color.FromRgb(0xA1, 0x5E, 0x7A)),
-        new SolidColorBrush(Color.FromRgb(0xA0, 0x72, 0x42)),
-        new SolidColorBrush(Color.FromRgb(0x68, 0x72, 0x82))
+        new SolidColorBrush(Color.FromRgb(0xA9, 0xD8, 0xD3)),
+        new SolidColorBrush(Color.FromRgb(0xB8, 0xC7, 0xF2)),
+        new SolidColorBrush(Color.FromRgb(0xF0, 0xB8, 0xCC)),
+        new SolidColorBrush(Color.FromRgb(0xF2, 0xD4, 0xA7)),
+        new SolidColorBrush(Color.FromRgb(0xB9, 0xE3, 0xB1)),
+        new SolidColorBrush(Color.FromRgb(0xD4, 0xBE, 0xF3))
     ];
 
     public WallpaperWindow() : this(false)
@@ -59,7 +75,10 @@ public partial class WallpaperWindow : Window
         ResolutionComboBox.SelectedIndex = 0;
         RatioComboBox.SelectedIndex = 0;
         ColorComboBox.SelectedIndex = 0;
+        UpdateWallpaperSourceSelectionText();
         WallpapersItemsControl.ItemsSource = _wallpapers;
+        LoadFavorites();
+        RefreshLocalizedText();
         SizeChanged += (_, _) => ApplyRoundedWindowClip();
 
         if (_isEmbedded)
@@ -98,6 +117,51 @@ public partial class WallpaperWindow : Window
 
     public void DisposeEmbedded() => ReleaseWallpaperResources();
 
+    public void RefreshLocalizedText()
+    {
+        Title = LocalizationService.T("Tapety z Wallhaven");
+        WindowTitleText.Text = LocalizationService.T("Tapety z Wallhaven");
+        SearchPlaceholderText.Text = LocalizationService.T("Wpisz tagi...");
+        WallhavenSourceItem.Content = "Wallhaven";
+        InProgressSourceItem.Content = LocalizationService.T("W trakcie tworzenia");
+
+        LatestSortButton.Content = LocalizationService.T("Latest");
+        HotSortButton.Content = LocalizationService.T("Hot");
+        ToplistSortButton.Content = LocalizationService.T("Toplist");
+        FavoritesToggleButton.Content = LocalizationService.T("Ulubione");
+
+        CategoriesLabelText.Text = LocalizationService.T("Kategorie");
+        GeneralCheckBox.Content = LocalizationService.T("General");
+        AnimeCheckBox.Content = LocalizationService.T("Anime");
+        PeopleCheckBox.Content = LocalizationService.T("People");
+
+        PurityLabelText.Text = LocalizationService.T("Czystość");
+        SfwCheckBox.Content = LocalizationService.T("SFW");
+        SketchyCheckBox.Content = LocalizationService.T("Sketchy");
+
+        ResolutionLabelText.Text = LocalizationService.T("Resolution");
+        ResolutionAnyItem.Content = LocalizationService.T("Any");
+        RatioLabelText.Text = LocalizationService.T("Ratio");
+        RatioAnyItem.Content = LocalizationService.T("Any");
+        RatioPortraitItem.Content = LocalizationService.T("Portrait");
+        ColorLabelText.Text = LocalizationService.T("Color");
+        ColorAnyItem.Content = LocalizationService.T("Any");
+        ColorRedItem.Content = LocalizationService.T("Red");
+        ColorOrangeItem.Content = LocalizationService.T("Orange");
+        ColorYellowItem.Content = LocalizationService.T("Yellow");
+        ColorGreenItem.Content = LocalizationService.T("Green");
+        ColorBlueItem.Content = LocalizationService.T("Blue");
+        ColorPurpleItem.Content = LocalizationService.T("Purple");
+        ColorBlackItem.Content = LocalizationService.T("Black");
+        ColorWhiteItem.Content = LocalizationService.T("White");
+
+        LoadingText.Text = LocalizationService.T("Ładowanie");
+        RetryButton.Content = LocalizationService.T("Spróbuj ponownie");
+        UpdateSearchPlaceholder();
+        UpdateWallpaperSourceSelectionText();
+        RefreshFavoritesStatus();
+    }
+
     private void ConfigureEmbeddedMode()
     {
         TitleBarRow.Height = new GridLength(0);
@@ -119,6 +183,21 @@ public partial class WallpaperWindow : Window
         ResolutionComboBox.Style = comboBoxStyle;
         RatioComboBox.Style = comboBoxStyle;
         ColorComboBox.Style = comboBoxStyle;
+
+        if (Resources["WallpaperSourceComboBoxStyle"] is Style sourceComboBoxStyle)
+            WallpaperSourceComboBox.Style = sourceComboBoxStyle;
+    }
+
+    private void UpdateWallpaperSourceSelectionText()
+    {
+        var sourceName = WallpaperSourceComboBox.SelectedItem is ComboBoxItem item
+            ? item.Content?.ToString()
+            : "Wallhaven";
+
+        if (string.IsNullOrWhiteSpace(sourceName))
+            sourceName = "Wallhaven";
+
+        WallpaperSourceComboBox.Tag = $"{LocalizationService.T("Wybrane źródło")}: {sourceName}";
     }
 
     private void ApplyRoundedWindowClip()
@@ -158,6 +237,12 @@ public partial class WallpaperWindow : Window
 
     private async Task ReloadWallpapersAsync()
     {
+        if (_isFavoritesMode)
+        {
+            ShowFavoriteWallpapers();
+            return;
+        }
+
         _loadCancellation?.Cancel();
         _loadCancellation = new CancellationTokenSource();
         _currentPage = 0;
@@ -210,7 +295,10 @@ public partial class WallpaperWindow : Window
                     item.Category,
                     item.Purity,
                     item.FileType,
-                    item.FileSize))
+                    item.FileSize)
+                {
+                    IsFavorite = _favoriteWallpapers.ContainsKey(item.Id ?? string.Empty)
+                })
                 .ToList() ?? [];
 
             foreach (var wallpaper in wallpapers)
@@ -227,11 +315,9 @@ public partial class WallpaperWindow : Window
                 ? Visibility.Visible
                 : Visibility.Collapsed;
             StatusText.Text = _wallpapers.Count == 0
-                ? "Nie znaleziono tapet dla wybranych filtrów."
+                ? LocalizationService.T("Nie znaleziono tapet dla wybranych filtrów.")
                 : string.Empty;
-            RetryButton.Visibility = _wallpapers.Count == 0
-                ? Visibility.Visible
-                : Visibility.Collapsed;
+            RetryButton.Visibility = Visibility.Collapsed;
         }
         catch (OperationCanceledException)
         {
@@ -240,7 +326,7 @@ public partial class WallpaperWindow : Window
         catch (Exception)
         {
             StatusPanel.Visibility = Visibility.Visible;
-            StatusText.Text = "Nie udało się pobrać tapet z Wallhaven.";
+            StatusText.Text = LocalizationService.T("Nie udało się pobrać tapet z Wallhaven.");
             RetryButton.Visibility = Visibility.Visible;
         }
         finally
@@ -282,6 +368,10 @@ public partial class WallpaperWindow : Window
         StopLoadingAnimation();
         WallpapersItemsControl.ItemsSource = null;
         TagsItemsControl.ItemsSource = null;
+        HiddenTagsItemsControl.ItemsSource = null;
+        HiddenTagsOverlayItemsControl.ItemsSource = null;
+        HiddenTagsCanvas.Visibility = Visibility.Collapsed;
+        _hasHiddenTags = false;
         foreach (var wallpaper in _wallpapers)
             wallpaper.ReleaseThumbnail();
         _wallpapers.Clear();
@@ -372,7 +462,7 @@ public partial class WallpaperWindow : Window
         object sender,
         ScrollChangedEventArgs e)
     {
-        if (!_isLoaded || _isLoading || !_hasMorePages)
+        if (_isFavoritesMode || !_isLoaded || _isLoading || !_hasMorePages)
             return;
 
         var remainingDistance =
@@ -385,6 +475,12 @@ public partial class WallpaperWindow : Window
 
     private async void Filter_Changed(object sender, RoutedEventArgs e)
     {
+        if (_suppressFilterEvents)
+            return;
+
+        if (ExitFavoritesModeForSearch())
+            return;
+
         if (_isLoaded)
             await ReloadWallpapersAsync();
     }
@@ -393,14 +489,33 @@ public partial class WallpaperWindow : Window
         object sender,
         SelectionChangedEventArgs e)
     {
+        if (_suppressFilterEvents)
+            return;
+
+        if (ExitFavoritesModeForSearch())
+            return;
+
         if (_isLoaded)
             await ReloadWallpapersAsync();
     }
 
+    private void WallpaperSourceComboBox_SelectionChanged(
+        object sender,
+        SelectionChangedEventArgs e)
+    {
+        UpdateWallpaperSourceSelectionText();
+    }
+
     private async void SortButton_Checked(object sender, RoutedEventArgs e)
     {
+        if (_suppressFilterEvents)
+            return;
+
         if (sender is RadioButton { Tag: string sorting })
             _sorting = sorting;
+
+        if (ExitFavoritesModeForSearch(restoreDefaultSort: false))
+            return;
 
         if (_isLoaded)
             await ReloadWallpapersAsync();
@@ -419,11 +534,18 @@ public partial class WallpaperWindow : Window
 
     private async void AddTag()
     {
+        ExitFavoritesModeForSearch(reload: false);
+
         var candidates = SearchTextBox.Text
-            .Split([',', ';'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            .Split([',', ';'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(tag => tag.Trim().TrimStart('#').Trim())
+            .Where(tag => !string.IsNullOrWhiteSpace(tag));
 
         foreach (var candidate in candidates)
         {
+            if (_tags.Count >= MaxTags)
+                break;
+
             if (!_tags.Contains(candidate, StringComparer.CurrentCultureIgnoreCase))
                 _tags.Add(candidate);
         }
@@ -437,18 +559,23 @@ public partial class WallpaperWindow : Window
     private void SearchTextBox_TextChanged(object sender, TextChangedEventArgs e) =>
         UpdateSearchPlaceholder();
 
+    private void SearchTextBox_MouseEnter(object sender, MouseEventArgs e) =>
+        HiddenTagsCanvas.Visibility = Visibility.Collapsed;
+
     private void UpdateSearchPlaceholder()
     {
         if (SearchPlaceholderText is null || SearchTextBox is null)
             return;
 
-        SearchPlaceholderText.Visibility = string.IsNullOrWhiteSpace(SearchTextBox.Text)
+        SearchPlaceholderText.Visibility = _tags.Count == 0 && string.IsNullOrWhiteSpace(SearchTextBox.Text)
             ? Visibility.Visible
             : Visibility.Collapsed;
     }
 
     private async void RemoveTagButton_Click(object sender, RoutedEventArgs e)
     {
+        ExitFavoritesModeForSearch(reload: false);
+
         if (sender is FrameworkElement { Tag: string tag })
             _tags.RemoveAll(item => string.Equals(item, tag, StringComparison.CurrentCultureIgnoreCase));
 
@@ -458,13 +585,270 @@ public partial class WallpaperWindow : Window
 
     private void RefreshTagChips()
     {
-        TagsItemsControl.ItemsSource = _tags
+        var chips = _tags
             .Select((tag, index) => new TagChip(tag, TagColors[index % TagColors.Length]))
             .ToList();
+        var visibleChips = new List<TagChip>();
+        var hiddenChips = new List<TagChip>();
+        var usedWidth = 0.0;
+        const double maxVisibleWidth = VisibleTagsWidth;
+
+        foreach (var chip in chips)
+        {
+            var chipWidth = EstimateTagChipWidth(chip.Text);
+            if (usedWidth + chipWidth <= maxVisibleWidth || visibleChips.Count == 0)
+            {
+                visibleChips.Add(chip);
+                usedWidth += chipWidth;
+            }
+            else
+            {
+                hiddenChips.Add(chip);
+            }
+        }
+
+        TagsItemsControl.ItemsSource = visibleChips;
+        HiddenTagsItemsControl.ItemsSource = null;
+        HiddenTagsOverlayItemsControl.ItemsSource = chips;
+        HiddenTagsItemsControl.Visibility = Visibility.Collapsed;
+        HiddenTagsCanvas.Visibility = Visibility.Collapsed;
+        TagsViewport.ClipToBounds = true;
+        _visibleTagContentWidth = usedWidth;
+        _hasHiddenTags = hiddenChips.Count > 0;
+        UpdateSearchPlaceholder();
     }
+
+    private void TagsViewport_MouseEnter(object sender, MouseEventArgs e)
+    {
+        if (!_hasHiddenTags)
+            return;
+
+        PositionHiddenTagsOverlay();
+        HiddenTagsCanvas.Visibility = Visibility.Visible;
+    }
+
+    private void TagsViewport_MouseLeave(object sender, MouseEventArgs e)
+    {
+        if (!HiddenTagsOverlayBackground.IsMouseOver && !HiddenTagsOverlayItemsControl.IsMouseOver)
+            HiddenTagsCanvas.Visibility = Visibility.Collapsed;
+    }
+
+    private void PositionHiddenTagsOverlay()
+    {
+        var viewportPosition = TagsViewport.TranslatePoint(new Point(0, 0), SearchBoxRoot);
+        var left = viewportPosition.X;
+        HiddenTagsOverlayItemsControl.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        var overlayWidth = HiddenTagsOverlayItemsControl.DesiredSize.Width;
+
+        Canvas.SetLeft(HiddenTagsOverlayBackground, left - 4);
+        Canvas.SetTop(HiddenTagsOverlayBackground, 4);
+        HiddenTagsOverlayBackground.Width = Math.Max(0, overlayWidth + 8);
+
+        Canvas.SetLeft(HiddenTagsOverlayItemsControl, left);
+        Canvas.SetTop(HiddenTagsOverlayItemsControl, 8);
+    }
+
+    private static double EstimateTagChipWidth(string text) =>
+        Math.Max(28, 23 + (text.Length * 6.2));
 
     private async void RefreshButton_Click(object sender, RoutedEventArgs e) =>
         await ReloadWallpapersAsync();
+
+    private async void FavoritesToggleButton_Checked(object sender, RoutedEventArgs e)
+    {
+        if (_suppressFilterEvents)
+            return;
+
+        _isFavoritesMode = FavoritesToggleButton.IsChecked == true;
+        if (_isFavoritesMode)
+        {
+            ClearWallpaperFiltersForFavorites();
+            ClearSortSelection();
+            WallpapersItemsControl.Tag = HorizontalAlignment.Left;
+            ShowFavoriteWallpapers();
+        }
+        else if (_isLoaded)
+        {
+            WallpapersItemsControl.Tag = HorizontalAlignment.Center;
+            await ReloadWallpapersAsync();
+        }
+    }
+
+    private bool ExitFavoritesModeForSearch(bool restoreDefaultSort = true, bool reload = true)
+    {
+        if (!_isFavoritesMode)
+            return false;
+
+        _suppressFilterEvents = true;
+        try
+        {
+            _isFavoritesMode = false;
+            FavoritesToggleButton.IsChecked = false;
+            WallpapersItemsControl.Tag = HorizontalAlignment.Center;
+            if (restoreDefaultSort && LatestSortButton.IsChecked != true)
+                LatestSortButton.IsChecked = true;
+        }
+        finally
+        {
+            _suppressFilterEvents = false;
+        }
+
+        if (reload)
+            _ = ReloadWallpapersAsync();
+        return true;
+    }
+
+    private void ClearSortSelection()
+    {
+        _suppressFilterEvents = true;
+        try
+        {
+            LatestSortButton.IsChecked = false;
+            HotSortButton.IsChecked = false;
+            ToplistSortButton.IsChecked = false;
+        }
+        finally
+        {
+            _suppressFilterEvents = false;
+        }
+    }
+
+    private void ClearWallpaperFiltersForFavorites()
+    {
+        _suppressFilterEvents = true;
+        try
+        {
+            GeneralCheckBox.IsChecked = false;
+            AnimeCheckBox.IsChecked = false;
+            PeopleCheckBox.IsChecked = false;
+            SfwCheckBox.IsChecked = false;
+            SketchyCheckBox.IsChecked = false;
+            ResolutionComboBox.SelectedIndex = 0;
+            RatioComboBox.SelectedIndex = 0;
+            ColorComboBox.SelectedIndex = 0;
+            _tags.Clear();
+            SearchTextBox.Clear();
+            RefreshTagChips();
+            UpdateSearchPlaceholder();
+        }
+        finally
+        {
+            _suppressFilterEvents = false;
+        }
+    }
+
+    private void ShowFavoriteWallpapers()
+    {
+        _loadCancellation?.Cancel();
+        _currentPage = 0;
+        _hasMorePages = false;
+        _isLoading = false;
+        StopLoadingAnimation();
+        _wallpapers.Clear();
+
+        foreach (var favorite in _favoriteWallpapers.Values.OrderByDescending(item => item.AddedAt))
+        {
+            _wallpapers.Add(new WallpaperCard(
+                favorite.Id,
+                favorite.ThumbnailUrl,
+                favorite.PageUrl,
+                favorite.FullImageUrl,
+                favorite.Resolution,
+                favorite.Category,
+                favorite.Purity,
+                favorite.FileType,
+                favorite.FileSize)
+            {
+                IsFavorite = true
+            });
+        }
+
+        WallpapersScrollViewer.ScrollToTop();
+        RefreshFavoritesStatus();
+    }
+
+    private void RefreshFavoritesStatus()
+    {
+        if (!_isFavoritesMode)
+            return;
+
+        StatusPanel.Visibility = _wallpapers.Count == 0
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        StatusText.Text = _wallpapers.Count == 0
+            ? LocalizationService.T("Brak ulubionych tapet.")
+            : string.Empty;
+        RetryButton.Visibility = Visibility.Collapsed;
+    }
+
+    private void FavoriteButton_Click(object sender, RoutedEventArgs e)
+    {
+        e.Handled = true;
+        if (sender is not FrameworkElement { Tag: WallpaperCard wallpaper })
+            return;
+
+        ToggleFavorite(wallpaper);
+    }
+
+    private void ToggleFavorite(WallpaperCard wallpaper)
+    {
+        if (string.IsNullOrWhiteSpace(wallpaper.Id))
+            return;
+
+        if (_favoriteWallpapers.ContainsKey(wallpaper.Id))
+        {
+            _favoriteWallpapers.Remove(wallpaper.Id);
+            wallpaper.IsFavorite = false;
+            if (_isFavoritesMode)
+            {
+                wallpaper.ReleaseThumbnail();
+                _wallpapers.Remove(wallpaper);
+                RefreshFavoritesStatus();
+            }
+        }
+        else
+        {
+            wallpaper.IsFavorite = true;
+            _favoriteWallpapers[wallpaper.Id] = FavoriteWallpaper.FromCard(wallpaper);
+        }
+
+        SaveFavorites();
+    }
+
+    private void LoadFavorites()
+    {
+        try
+        {
+            if (!File.Exists(FavoritesFilePath))
+                return;
+
+            var favorites = JsonSerializer.Deserialize<List<FavoriteWallpaper>>(
+                File.ReadAllText(FavoritesFilePath)) ?? [];
+            foreach (var favorite in favorites.Where(item =>
+                         !string.IsNullOrWhiteSpace(item.Id) &&
+                         !string.IsNullOrWhiteSpace(item.ThumbnailUrl) &&
+                         !string.IsNullOrWhiteSpace(item.PageUrl)))
+            {
+                _favoriteWallpapers[favorite.Id] = favorite;
+            }
+        }
+        catch
+        {
+            _favoriteWallpapers.Clear();
+        }
+    }
+
+    private static void SaveFavorites(IEnumerable<FavoriteWallpaper> favorites)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(FavoritesFilePath)!);
+        File.WriteAllText(
+            FavoritesFilePath,
+            JsonSerializer.Serialize(
+                favorites.OrderByDescending(item => item.AddedAt),
+                new JsonSerializerOptions { WriteIndented = true }));
+    }
+
+    private void SaveFavorites() => SaveFavorites(_favoriteWallpapers.Values);
 
     private void WallpaperButton_Click(object sender, RoutedEventArgs e)
     {
@@ -578,6 +962,32 @@ public partial class WallpaperWindow : Window
 
     private sealed record TagChip(string Text, Brush Background);
 
+    private sealed record FavoriteWallpaper(
+        string Id,
+        string ThumbnailUrl,
+        string PageUrl,
+        string? FullImageUrl,
+        string Resolution,
+        string? Category,
+        string? Purity,
+        string? FileType,
+        long? FileSize,
+        DateTimeOffset AddedAt)
+    {
+        public static FavoriteWallpaper FromCard(WallpaperCard card) =>
+            new(
+                card.Id,
+                card.ThumbnailUrl,
+                card.PageUrl,
+                card.FullImageUrl,
+                card.Resolution,
+                card.Category,
+                card.Purity,
+                card.FileType,
+                card.FileSize,
+                DateTimeOffset.Now);
+    }
+
     private sealed class WallhavenResponse
     {
         [JsonPropertyName("data")]
@@ -639,12 +1049,32 @@ public sealed record WallpaperCard(
     string? Category,
     string? Purity,
     string? FileType,
-    long? FileSize)
+    long? FileSize) : INotifyPropertyChanged
 {
+    private bool _isFavorite;
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+
     public ImageSource? ThumbnailImage { get; private set; } =
         CreateImage(ThumbnailUrl, 320);
 
+    public bool IsFavorite
+    {
+        get => _isFavorite;
+        set
+        {
+            if (_isFavorite == value)
+                return;
+
+            _isFavorite = value;
+            OnPropertyChanged();
+        }
+    }
+
     public void ReleaseThumbnail() => ThumbnailImage = null;
+
+    private void OnPropertyChanged([CallerMemberName] string? propertyName = null) =>
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
 
     public static BitmapImage CreateImage(string url, int decodePixelWidth)
     {

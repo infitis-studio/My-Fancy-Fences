@@ -211,25 +211,25 @@ public partial class SettingsWindow : Window
 
         if (!TryReadBackgroundColor(out var backgroundColor))
         {
-            ValidationText.Text = "Podaj kolor w formacie HEX, np. #0B0E12.";
+            ValidationText.Text = LocalizationService.T("Podaj kolor w formacie HEX, np. #0B0E12.");
             return;
         }
 
         if (!TryReadBorderColor(out var borderColor))
         {
-            ValidationText.Text = "Podaj kolor obramowania w formacie HEX, np. #FFFFFF.";
+            ValidationText.Text = LocalizationService.T("Podaj kolor obramowania w formacie HEX, np. #FFFFFF.");
             return;
         }
 
         if (!TryReadFontColor(out var fontColor))
         {
-            ValidationText.Text = "Podaj kolor tekstu w formacie HEX, np. #FFFFFF.";
+            ValidationText.Text = LocalizationService.T("Podaj kolor tekstu w formacie HEX, np. #FFFFFF.");
             return;
         }
 
         if (!TryReadIconFontColor(out var iconFontColor))
         {
-            ValidationText.Text = "Podaj kolor podpisów ikon w formacie HEX, np. #FFFFFF.";
+            ValidationText.Text = LocalizationService.T("Podaj kolor podpisów ikon w formacie HEX, np. #FFFFFF.");
             return;
         }
 
@@ -265,9 +265,9 @@ public partial class SettingsWindow : Window
     private void DeleteButton_Click(object sender, RoutedEventArgs e)
     {
         var confirmation = new ConfirmationWindow(
-            "Usunąć panel?",
-            "Panel zostanie trwale usunięty wraz z jego zapisanymi ustawieniami. Tej operacji nie można cofnąć.",
-            "Usuń panel")
+            LocalizationService.T("Usunąć panel?"),
+            LocalizationService.T("Panel zostanie trwale usunięty wraz z jego zapisanymi ustawieniami. Tej operacji nie można cofnąć."),
+            LocalizationService.T("Usuń panel"))
         {
             Owner = this
         };
@@ -326,9 +326,9 @@ public partial class SettingsWindow : Window
     private bool ConfirmSectionReset(string sectionName)
     {
         var confirmation = new ConfirmationWindow(
-            "Przywrócić ustawienia?",
-            $"Ustawienia {sectionName} zostaną zastąpione wartościami domyślnymi.",
-            "Przywróć")
+            LocalizationService.T("Przywrócić ustawienia?"),
+            $"{LocalizationService.T("Ustawienia")} {LocalizationService.T(sectionName)} {LocalizationService.T("zostaną zastąpione wartościami domyślnymi.")}",
+            LocalizationService.T("Przywróć"))
         {
             Owner = this
         };

@@ -63,10 +63,10 @@ public partial class LayoutManageWindow : Window
             return;
 
         var confirmation = new ConfirmationWindow(
-            "Usunąć układ?",
-            $"Czy na pewno usunąć układ „{item.Name}”? Tej operacji nie można cofnąć.",
-            "Usuń",
-            "Anuluj")
+            LocalizationService.T("Usunąć układ?"),
+            $"{LocalizationService.T("Czy na pewno usunąć układ")} „{item.Name}”? {LocalizationService.T("Tej operacji nie można cofnąć.")}",
+            LocalizationService.T("Usuń"),
+            LocalizationService.T("Anuluj"))
         {
             Owner = this
         };

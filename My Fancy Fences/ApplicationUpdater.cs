@@ -36,13 +36,13 @@ public static class ApplicationUpdater
             candidate.Name.Contains(marker, StringComparison.OrdinalIgnoreCase) &&
             candidate.Name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase));
         if (asset is null)
-            throw new InvalidOperationException($"Wydanie nie zawiera pliku {marker}.");
+            throw new InvalidOperationException($"{LocalizationService.T("Wydanie nie zawiera pliku")} {marker}.");
 
         var downloadUri = new Uri(asset.DownloadUrl);
         if (!downloadUri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ||
             !downloadUri.Host.Equals("github.com", StringComparison.OrdinalIgnoreCase))
         {
-            throw new InvalidOperationException("Nieprawidłowy adres pliku aktualizacji.");
+            throw new InvalidOperationException(LocalizationService.T("Nieprawidłowy adres pliku aktualizacji."));
         }
 
         var currentExecutable = GetCurrentExecutablePath();
@@ -104,7 +104,7 @@ public static class ApplicationUpdater
     private static void EnsureTargetDirectoryIsWritable(string executablePath)
     {
         var directory = Path.GetDirectoryName(executablePath)
-            ?? throw new InvalidOperationException("Nie można ustalić folderu aplikacji.");
+            ?? throw new InvalidOperationException(LocalizationService.T("Nie można ustalić folderu aplikacji."));
         var probePath = Path.Combine(directory, $".mff-update-{Guid.NewGuid():N}.tmp");
         try
         {
@@ -113,7 +113,7 @@ public static class ApplicationUpdater
         catch (Exception exception)
         {
             throw new UnauthorizedAccessException(
-                "Brak uprawnień do podmiany pliku aplikacji w obecnym folderze.",
+                LocalizationService.T("Brak uprawnień do podmiany pliku aplikacji w obecnym folderze."),
                 exception);
         }
         finally
@@ -129,12 +129,12 @@ public static class ApplicationUpdater
         if (!file.Exists || file.Length < 1024 * 1024 ||
             (expectedSize > 0 && file.Length != expectedSize))
         {
-            throw new InvalidDataException("Pobrany plik aktualizacji jest niekompletny.");
+            throw new InvalidDataException(LocalizationService.T("Pobrany plik aktualizacji jest niekompletny."));
         }
 
         using var stream = file.OpenRead();
         if (stream.ReadByte() != 'M' || stream.ReadByte() != 'Z')
-            throw new InvalidDataException("Pobrany plik nie jest prawidłową aplikacją Windows.");
+            throw new InvalidDataException(LocalizationService.T("Pobrany plik nie jest prawidłową aplikacją Windows."));
     }
 
     private static void StartReplacementHelper(string targetPath, string downloadedPath)

@@ -39,11 +39,11 @@ public static class ConfigurationArchiveService
         bool includeShortcuts)
     {
         if (!File.Exists(settingsPath))
-            throw new FileNotFoundException("Nie znaleziono zapisanej konfiguracji.", settingsPath);
+            throw new FileNotFoundException(LocalizationService.T("Nie znaleziono zapisanej konfiguracji."), settingsPath);
 
         var settingsJson = File.ReadAllText(settingsPath);
         var settings = JsonNode.Parse(settingsJson)?.AsObject()
-            ?? throw new InvalidDataException("Plik konfiguracji jest nieprawidłowy.");
+            ?? throw new InvalidDataException(LocalizationService.T("Plik konfiguracji jest nieprawidłowy."));
         var panels = ReadPanels(settings);
 
         var destinationDirectory = Path.GetDirectoryName(archivePath);
@@ -115,20 +115,20 @@ public static class ConfigurationArchiveService
         string? shortcutsDestination)
     {
         if (!File.Exists(archivePath))
-            throw new FileNotFoundException("Nie znaleziono wybranego archiwum.", archivePath);
+            throw new FileNotFoundException(LocalizationService.T("Nie znaleziono wybranego archiwum."), archivePath);
         using var archive = ZipFile.OpenRead(archivePath);
         var manifest = ReadJsonEntry<ArchiveManifest>(archive, "manifest.json")
-            ?? throw new InvalidDataException("Archiwum nie zawiera prawidłowego manifestu.");
+            ?? throw new InvalidDataException(LocalizationService.T("Archiwum nie zawiera prawidłowego manifestu."));
         if (manifest.FormatVersion > ArchiveFormatVersion)
-            throw new InvalidDataException("Archiwum pochodzi z nowszej wersji aplikacji.");
+            throw new InvalidDataException(LocalizationService.T("Archiwum pochodzi z nowszej wersji aplikacji."));
 
         var settingsEntry = archive.GetEntry("config/settings.json")
-            ?? throw new InvalidDataException("Archiwum nie zawiera konfiguracji.");
+            ?? throw new InvalidDataException(LocalizationService.T("Archiwum nie zawiera konfiguracji."));
         string settingsJson;
         using (var reader = new StreamReader(settingsEntry.Open()))
             settingsJson = reader.ReadToEnd();
         var settings = JsonNode.Parse(settingsJson)?.AsObject()
-            ?? throw new InvalidDataException("Konfiguracja w archiwum jest nieprawidłowa.");
+            ?? throw new InvalidDataException(LocalizationService.T("Konfiguracja w archiwum jest nieprawidłowa."));
 
         var settingsDirectory = Path.GetDirectoryName(settingsPath)!;
         Directory.CreateDirectory(settingsDirectory);
@@ -196,7 +196,7 @@ public static class ConfigurationArchiveService
         {
             new(
                 0,
-                settings["Title"]?.GetValue<string>() ?? "Panel główny",
+                settings["Title"]?.GetValue<string>() ?? LocalizationService.T("Panel główny"),
                 settings["SourceFolder"]?.GetValue<string>() ?? string.Empty)
         };
 

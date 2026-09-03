@@ -20,6 +20,10 @@ public partial class WallpaperDetailsWindow : Window
     private const int SpifSendWinIniChange = 0x02;
 
     private static readonly HttpClient HttpClient = CreateHttpClient();
+    private static readonly string FavoritesFilePath = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "My Fancy Fences",
+        "wallpaper-favorites.json");
     private readonly WallpaperCard _wallpaper;
     private readonly ObservableCollection<PropertyRow> _properties = [];
     private string? _fullImageUrl;
@@ -41,6 +45,8 @@ public partial class WallpaperDetailsWindow : Window
             ? wallpaper.PageUrl
             : wallpaper.FullImageUrl;
 
+        _wallpaper.IsFavorite = IsFavoriteStored(_wallpaper.Id);
+        FavoriteDetailsButton.DataContext = _wallpaper;
         PropertiesItemsControl.ItemsSource = _properties;
         WallpaperPreviewImage.Source = WallpaperCard.CreateImage(wallpaper.ThumbnailUrl, 720);
         ApplyFallbackProperties();
@@ -96,11 +102,11 @@ public partial class WallpaperDetailsWindow : Window
     {
         _properties.Clear();
         AddProperty("ID", _wallpaper.Id);
-        AddProperty("Rozdzielczość", _wallpaper.Resolution);
-        AddProperty("Kategoria", _wallpaper.Category);
-        AddProperty("Czystość", _wallpaper.Purity);
-        AddProperty("Typ", _wallpaper.FileType);
-        AddProperty("Rozmiar", FormatFileSize(_wallpaper.FileSize));
+        AddProperty(LocalizationService.T("Rozdzielczość"), _wallpaper.Resolution);
+        AddProperty(LocalizationService.T("Kategoria"), _wallpaper.Category);
+        AddProperty(LocalizationService.T("Czystość"), _wallpaper.Purity);
+        AddProperty(LocalizationService.T("Typ"), _wallpaper.FileType);
+        AddProperty(LocalizationService.T("Rozmiar"), FormatFileSize(_wallpaper.FileSize));
     }
 
     private async Task LoadDetailsAsync()
@@ -126,16 +132,16 @@ public partial class WallpaperDetailsWindow : Window
 
                 _properties.Clear();
                 AddProperty("ID", item.Id);
-                AddProperty("Rozdzielczość", item.Resolution);
-                AddProperty("Wymiary", FormatDimensions(item.DimensionX, item.DimensionY));
+                AddProperty(LocalizationService.T("Rozdzielczość"), item.Resolution);
+                AddProperty(LocalizationService.T("Wymiary"), FormatDimensions(item.DimensionX, item.DimensionY));
                 AddProperty("Ratio", item.Ratio);
-                AddProperty("Kategoria", item.Category);
-                AddProperty("Czystość", item.Purity);
-                AddProperty("Typ", item.FileType);
-                AddProperty("Rozmiar", FormatFileSize(item.FileSize));
-                AddProperty("Wyświetlenia", item.Views?.ToString());
-                AddProperty("Ulubione", item.Favorites?.ToString());
-                AddProperty("Dodano", item.CreatedAt);
+                AddProperty(LocalizationService.T("Kategoria"), item.Category);
+                AddProperty(LocalizationService.T("Czystość"), item.Purity);
+                AddProperty(LocalizationService.T("Typ"), item.FileType);
+                AddProperty(LocalizationService.T("Rozmiar"), FormatFileSize(item.FileSize));
+                AddProperty(LocalizationService.T("Wyświetlenia"), item.Views?.ToString());
+                AddProperty(LocalizationService.T("Ulubione"), item.Favorites?.ToString());
+                AddProperty(LocalizationService.T("Dodano"), item.CreatedAt);
 
                 var tags = item.Tags?
                     .Select(tag => tag.Name)
@@ -148,13 +154,13 @@ public partial class WallpaperDetailsWindow : Window
                     ? Visibility.Visible
                     : Visibility.Collapsed;
                 TagsLoadingText.Text = tags.Count == 0
-                    ? "Brak tagów dla tej tapety."
+                    ? LocalizationService.T("Brak tagów dla tej tapety.")
                     : string.Empty;
             }
         }
         catch
         {
-            TagsLoadingText.Text = "Nie udało się pobrać tagów.";
+            TagsLoadingText.Text = LocalizationService.T("Nie udało się pobrać tagów.");
         }
         finally
         {
@@ -216,7 +222,7 @@ public partial class WallpaperDetailsWindow : Window
         if (File.Exists(targetPath))
             File.Delete(targetPath);
 
-        StatusText.Text = "Pobieranie tapety...";
+        StatusText.Text = LocalizationService.T("Pobieranie tapety...");
         using var response = await HttpClient.GetAsync(_fullImageUrl);
         response.EnsureSuccessStatusCode();
 
@@ -228,7 +234,7 @@ public partial class WallpaperDetailsWindow : Window
                 await source.CopyToAsync(target);
 
             if (!IsValidImageFile(temporaryPath))
-                throw new InvalidDataException("Pobrany plik nie jest prawidłowym obrazem.");
+                throw new InvalidDataException(LocalizationService.T("Pobrany plik nie jest prawidłowym obrazem."));
 
             File.Move(temporaryPath, targetPath, overwrite: true);
         }
@@ -312,13 +318,36 @@ public partial class WallpaperDetailsWindow : Window
         {
             var path = await DownloadWallpaperAsync();
             StatusText.Text = path is null
-                ? "Nie udało się pobrać tapety."
-                : $"Pobrano: {path}";
+                ? LocalizationService.T("Nie udało się pobrać tapety.")
+                : $"{LocalizationService.T("Pobrano")}: {path}";
         }
         catch
         {
-            StatusText.Text = "Nie udało się pobrać tapety.";
+            StatusText.Text = LocalizationService.T("Nie udało się pobrać tapety.");
         }
+    }
+
+    private void FavoriteDetailsButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(_wallpaper.Id))
+            return;
+
+        var favorites = LoadFavorites();
+        var existing = favorites.FindIndex(item =>
+            string.Equals(item.Id, _wallpaper.Id, StringComparison.OrdinalIgnoreCase));
+
+        if (existing >= 0)
+        {
+            favorites.RemoveAt(existing);
+            _wallpaper.IsFavorite = false;
+        }
+        else
+        {
+            favorites.Add(FavoriteWallpaper.FromCard(_wallpaper));
+            _wallpaper.IsFavorite = true;
+        }
+
+        SaveFavorites(favorites);
     }
 
     private async void SetWallpaperButton_Click(object sender, RoutedEventArgs e)
@@ -328,7 +357,7 @@ public partial class WallpaperDetailsWindow : Window
             var path = await DownloadWallpaperAsync();
             if (path is null)
             {
-                StatusText.Text = "Nie udało się pobrać tapety.";
+                StatusText.Text = LocalizationService.T("Nie udało się pobrać tapety.");
                 return;
             }
 
@@ -341,12 +370,12 @@ public partial class WallpaperDetailsWindow : Window
                 SpifUpdateIniFile | SpifSendWinIniChange);
 
             StatusText.Text = success
-                ? "Ustawiono jako tapetę."
-                : "Windows nie pozwolił ustawić tapety.";
+                ? LocalizationService.T("Ustawiono jako tapetę.")
+                : LocalizationService.T("Windows nie pozwolił ustawić tapety.");
         }
         catch
         {
-            StatusText.Text = "Nie udało się ustawić tapety.";
+            StatusText.Text = LocalizationService.T("Nie udało się ustawić tapety.");
         }
     }
 
@@ -458,6 +487,62 @@ public partial class WallpaperDetailsWindow : Window
         int update);
 
     private sealed record PropertyRow(string Name, string Value);
+
+    private static bool IsFavoriteStored(string wallpaperId) =>
+        LoadFavorites().Any(item =>
+            string.Equals(item.Id, wallpaperId, StringComparison.OrdinalIgnoreCase));
+
+    private static List<FavoriteWallpaper> LoadFavorites()
+    {
+        try
+        {
+            if (!File.Exists(FavoritesFilePath))
+                return [];
+
+            return JsonSerializer.Deserialize<List<FavoriteWallpaper>>(
+                File.ReadAllText(FavoritesFilePath)) ?? [];
+        }
+        catch
+        {
+            return [];
+        }
+    }
+
+    private static void SaveFavorites(IEnumerable<FavoriteWallpaper> favorites)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(FavoritesFilePath)!);
+        File.WriteAllText(
+            FavoritesFilePath,
+            JsonSerializer.Serialize(
+                favorites.OrderByDescending(item => item.AddedAt),
+                new JsonSerializerOptions { WriteIndented = true }));
+    }
+
+    private sealed record FavoriteWallpaper(
+        string Id,
+        string ThumbnailUrl,
+        string PageUrl,
+        string? FullImageUrl,
+        string Resolution,
+        string? Category,
+        string? Purity,
+        string? FileType,
+        long? FileSize,
+        DateTimeOffset AddedAt)
+    {
+        public static FavoriteWallpaper FromCard(WallpaperCard card) =>
+            new(
+                card.Id,
+                card.ThumbnailUrl,
+                card.PageUrl,
+                card.FullImageUrl,
+                card.Resolution,
+                card.Category,
+                card.Purity,
+                card.FileType,
+                card.FileSize,
+                DateTimeOffset.Now);
+    }
 
     private sealed class WallhavenDetailsResponse
     {

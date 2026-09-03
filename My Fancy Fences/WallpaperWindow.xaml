@@ -150,6 +150,76 @@
             </Setter>
         </Style>
 
+        <Style x:Key="FavoritesToggleStyle"
+               TargetType="ToggleButton">
+            <Setter Property="MinWidth" Value="104"/>
+            <Setter Property="Height" Value="34"/>
+            <Setter Property="Padding" Value="16,0"/>
+            <Setter Property="Foreground" Value="#FFE3DDE0"/>
+            <Setter Property="Background" Value="#FF303035"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="ToggleBorder"
+                                CornerRadius="6"
+                                Background="{TemplateBinding Background}">
+                            <ContentPresenter Margin="{TemplateBinding Padding}"
+                                              HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ToggleBorder" Property="Background" Value="#FF3A3A40"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="ToggleBorder" Property="Background" Value="#FF50323B"/>
+                                <Setter Property="Foreground" Value="#FFFFD7DE"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="FavoriteHeartButtonStyle" TargetType="Button">
+            <Setter Property="Width" Value="31"/>
+            <Setter Property="Height" Value="31"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Opacity" Value="0"/>
+            <Setter Property="Background" Value="#CC2D2D30"/>
+            <Setter Property="Foreground" Value="#FFD0D0D4"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="HeartBackground"
+                                CornerRadius="15.5"
+                                Background="{TemplateBinding Background}">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="HeartBackground" Property="Background" Value="#EE3A3A3F"/>
+                            </Trigger>
+                            <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=Button}}"
+                                         Value="True">
+                                <Setter Property="Opacity" Value="1"/>
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding IsFavorite}" Value="True">
+                                <Setter Property="Opacity" Value="1"/>
+                                <Setter Property="Foreground" Value="#FFFF4D64"/>
+                            </DataTrigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <Style x:Key="FilterCheckBoxStyle" TargetType="CheckBox">
             <Setter Property="Foreground" Value="#FFE7E2E4"/>
             <Setter Property="Margin" Value="0,5"/>
@@ -313,6 +383,177 @@
             </Setter>
         </Style>
 
+        <Style x:Key="WallpaperSourceComboBoxStyle" TargetType="ComboBox">
+            <Setter Property="Height" Value="31"/>
+            <Setter Property="Margin" Value="0"/>
+            <Setter Property="Background" Value="#FF252529"/>
+            <Setter Property="Foreground" Value="#FFE7E2E4"/>
+            <Setter Property="BorderBrush" Value="#FF3B3B40"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontWeight" Value="Normal"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBox">
+                        <Grid>
+                            <ToggleButton IsChecked="{Binding IsDropDownOpen,
+                                                              RelativeSource={RelativeSource TemplatedParent},
+                                                              Mode=TwoWay}"
+                                          Focusable="False">
+                                <ToggleButton.Template>
+                                    <ControlTemplate TargetType="ToggleButton">
+                                        <Border x:Name="SourceToggleBorder"
+                                                Background="{Binding Background, RelativeSource={RelativeSource AncestorType=ComboBox}}"
+                                                BorderBrush="{Binding BorderBrush, RelativeSource={RelativeSource AncestorType=ComboBox}}"
+                                                BorderThickness="{Binding BorderThickness, RelativeSource={RelativeSource AncestorType=ComboBox}}"
+                                                CornerRadius="5">
+                                            <Grid Margin="9,0,8,0">
+                                                <ContentPresenter Content="{Binding Tag,
+                                                                                    RelativeSource={RelativeSource AncestorType=ComboBox}}"
+                                                                  HorizontalAlignment="Left"
+                                                                  VerticalAlignment="Center"
+                                                                  TextElement.Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ComboBox}}"
+                                                                  TextElement.FontWeight="{Binding FontWeight, RelativeSource={RelativeSource AncestorType=ComboBox}}"/>
+                                                <iconPacks:PackIconLucide Kind="ChevronDown"
+                                                                          Width="14"
+                                                                          Height="14"
+                                                                          Foreground="#FFC7C1C4"
+                                                                          HorizontalAlignment="Right"
+                                                                          VerticalAlignment="Center"/>
+                                            </Grid>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="SourceToggleBorder" Property="Background" Value="#FF303034"/>
+                                                <Setter TargetName="SourceToggleBorder" Property="BorderBrush" Value="#FF4A4A50"/>
+                                            </Trigger>
+                                            <Trigger Property="IsChecked" Value="True">
+                                                <Setter TargetName="SourceToggleBorder" Property="Background" Value="#FF303034"/>
+                                                <Setter TargetName="SourceToggleBorder" Property="BorderBrush" Value="#FF4A4A50"/>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </ToggleButton.Template>
+                            </ToggleButton>
+                            <Popup IsOpen="{TemplateBinding IsDropDownOpen}"
+                                   Placement="Bottom"
+                                   AllowsTransparency="True"
+                                   Focusable="False">
+                                <Border MinWidth="{Binding ActualWidth,
+                                                           RelativeSource={RelativeSource TemplatedParent}}"
+                                        Margin="0,5,0,0"
+                                        Padding="4"
+                                        CornerRadius="5"
+                                        Background="#FF252529"
+                                        BorderBrush="#FF3B3B40"
+                                        BorderThickness="1">
+                                    <ScrollViewer>
+                                        <ItemsPresenter/>
+                                    </ScrollViewer>
+                                </Border>
+                            </Popup>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="ItemContainerStyle">
+                <Setter.Value>
+                    <Style TargetType="ComboBoxItem">
+                        <Setter Property="Height" Value="32"/>
+                        <Setter Property="Padding" Value="9,0"/>
+                        <Setter Property="Foreground" Value="#FFE7E2E4"/>
+                        <Setter Property="Background" Value="#FF252529"/>
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="ComboBoxItem">
+                                    <Border x:Name="SourceItemBorder"
+                                            CornerRadius="7"
+                                            Background="{TemplateBinding Background}">
+                                        <ContentPresenter Margin="{TemplateBinding Padding}"
+                                                          HorizontalAlignment="Left"
+                                                          VerticalAlignment="Center"/>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="SourceItemBorder" Property="Background" Value="#FF38383E"/>
+                                        </Trigger>
+                                        <Trigger Property="IsSelected" Value="True">
+                                            <Setter TargetName="SourceItemBorder" Property="Background" Value="#FF44444A"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                    </Style>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <DataTemplate x:Key="TagChipTemplate">
+            <Button Tag="{Binding Text}"
+                    Margin="5,0,0,0"
+                    Padding="7,2"
+                    MinWidth="0"
+                    MinHeight="0"
+                    Height="17"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Center"
+                    Background="{Binding Background}"
+                    BorderThickness="0"
+                    Cursor="Hand"
+                    Click="RemoveTagButton_Click">
+                <Button.Template>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="TagChipBorder"
+                                Padding="{TemplateBinding Padding}"
+                                CornerRadius="6"
+                                Background="{TemplateBinding Background}">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="TagChipBorder" Property="Opacity" Value=".86"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="TagChipBorder" Property="Opacity" Value=".72"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Button.Template>
+                <TextBlock Foreground="#F21B1B1E"
+                           FontSize="10"
+                           FontWeight="SemiBold"
+                           LineHeight="12">
+                    <Run Text="#"/>
+                    <Run Text="{Binding Text}"/>
+                </TextBlock>
+            </Button>
+        </DataTemplate>
+
+        <Style x:Key="SearchTextBoxStyle" TargetType="TextBox">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Foreground" Value="#FFE7E2E4"/>
+            <Setter Property="CaretBrush" Value="#FFE7E2E4"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TextBox">
+                        <Border Background="Transparent"
+                                BorderBrush="Transparent"
+                                BorderThickness="0">
+                            <ScrollViewer x:Name="PART_ContentHost"
+                                          Background="Transparent"
+                                          Focusable="False"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <Style x:Key="WallpaperCardStyle" TargetType="Button">
             <Setter Property="Margin" Value="6"/>
             <Setter Property="Padding" Value="0"/>
@@ -406,6 +647,7 @@
             <Grid.RowDefinitions>
                 <RowDefinition x:Name="TitleBarRow" Height="46"/>
                 <RowDefinition Height="58"/>
+                <RowDefinition Height="0"/>
                 <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
 
@@ -426,7 +668,8 @@
                                                   Height="18"
                                                   Margin="0,0,10,0"
                                                   Foreground="#FFC9C2C5"/>
-                        <TextBlock Text="Tapety z Wallhaven"
+                        <TextBlock x:Name="WindowTitleText"
+                                   Text="Tapety z Wallhaven"
                                    FontSize="14"
                                    FontWeight="SemiBold"
                                    VerticalAlignment="Center"/>
@@ -483,19 +726,47 @@
                         <GradientStop Color="#00141416" Offset="1"/>
                     </LinearGradientBrush>
                 </Border.Background>
-                <Grid Margin="15,9" Background="Transparent">
+                <Grid Margin="15,10,15,11" Background="Transparent">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="380"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
 
-                    <Grid Background="Transparent">
+                    <ComboBox x:Name="WallpaperSourceComboBox"
+                              Grid.Column="0"
+                              Width="220"
+                              Height="31"
+                              Margin="0"
+                              HorizontalAlignment="Left"
+                              VerticalAlignment="Center"
+                              Tag="Wybrane źródło: Wallhaven"
+                              Style="{StaticResource WallpaperSourceComboBoxStyle}"
+                              SelectionChanged="WallpaperSourceComboBox_SelectionChanged"
+                              SelectedIndex="0">
+                        <ComboBoxItem x:Name="WallhavenSourceItem" Content="Wallhaven" Tag="wallhaven"/>
+                        <ComboBoxItem x:Name="InProgressSourceItem" Content="W trakcie tworzenia" Tag="moewalls"/>
+                    </ComboBox>
+
+                    <Grid x:Name="SearchBoxRoot"
+                          Grid.Column="2"
+                          Panel.ZIndex="50"
+                          Width="380"
+                          Height="34"
+                          HorizontalAlignment="Left"
+                          VerticalAlignment="Center"
+                          Background="Transparent"
+                          ClipToBounds="False">
                         <Border CornerRadius="7"
                                 Background="#FF222225"
                                 BorderBrush="#FF37373B"
                                 BorderThickness="1"/>
-                        <Grid Margin="10,0,5,0">
+                        <Grid Margin="10,0,5,0"
+                              ClipToBounds="False">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto"/>
                                 <ColumnDefinition Width="*"/>
@@ -507,15 +778,55 @@
                                                       Margin="0,0,8,0"
                                                       Foreground="#FFA9A2A5"
                                                       VerticalAlignment="Center"/>
-                            <TextBox x:Name="SearchTextBox"
-                                     Grid.Column="1"
-                                     Background="Transparent"
-                                     BorderThickness="0"
-                                     Foreground="#FFE7E2E4"
-                                     CaretBrush="#FFE7E2E4"
-                                     VerticalContentAlignment="Center"
-                                     TextChanged="SearchTextBox_TextChanged"
-                                     KeyDown="SearchTextBox_KeyDown"/>
+                            <Grid Grid.Column="1"
+                                  Panel.ZIndex="20"
+                                  VerticalAlignment="Center"
+                                  ClipToBounds="False">
+                                <Grid x:Name="TagsViewport"
+                                      Panel.ZIndex="80"
+                                      Width="145"
+                                      HorizontalAlignment="Right"
+                                      VerticalAlignment="Center"
+                                      ClipToBounds="True"
+                                      MouseEnter="TagsViewport_MouseEnter"
+                                      MouseLeave="TagsViewport_MouseLeave">
+                                    <StackPanel Orientation="Horizontal"
+                                                HorizontalAlignment="Left"
+                                                VerticalAlignment="Center">
+                                        <ItemsControl x:Name="TagsItemsControl"
+                                                      HorizontalAlignment="Left"
+                                                      VerticalAlignment="Center"
+                                                      ItemTemplate="{StaticResource TagChipTemplate}">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate>
+                                                    <StackPanel Orientation="Horizontal"
+                                                                HorizontalAlignment="Left"/>
+                                                </ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                        </ItemsControl>
+                                        <ItemsControl x:Name="HiddenTagsItemsControl"
+                                                      Visibility="Collapsed"
+                                                      HorizontalAlignment="Left"
+                                                      Panel.ZIndex="300"
+                                                      VerticalAlignment="Center"
+                                                      ItemTemplate="{StaticResource TagChipTemplate}">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate>
+                                                    <StackPanel Orientation="Horizontal"
+                                                                HorizontalAlignment="Left"/>
+                                                </ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </Grid>
+                                <TextBox x:Name="SearchTextBox"
+                                         MinWidth="70"
+                                         Margin="0,0,150,0"
+                                         Style="{StaticResource SearchTextBoxStyle}"
+                                         MouseEnter="SearchTextBox_MouseEnter"
+                                         TextChanged="SearchTextBox_TextChanged"
+                                         KeyDown="SearchTextBox_KeyDown"/>
+                            </Grid>
                             <TextBlock x:Name="SearchPlaceholderText"
                                        Grid.Column="1"
                                        Text="Wpisz tagi..."
@@ -523,49 +834,70 @@
                                        IsHitTestVisible="False"
                                        VerticalAlignment="Center"/>
                             <Button Grid.Column="2"
+                                    Panel.ZIndex="1"
                                     Style="{StaticResource RoundSearchButtonStyle}"
                                     Margin="4,0,0,0"
                                     Click="AddTagButton_Click">
                                 <iconPacks:PackIconLucide Kind="Plus" Width="14" Height="14"/>
                             </Button>
                         </Grid>
+                        <Canvas x:Name="HiddenTagsCanvas"
+                                Panel.ZIndex="500"
+                                Width="380"
+                                Height="34"
+                                HorizontalAlignment="Stretch"
+                                VerticalAlignment="Stretch"
+                                ClipToBounds="False"
+                                Visibility="Collapsed"
+                                Background="Transparent"
+                                MouseEnter="TagsViewport_MouseEnter"
+                                MouseLeave="TagsViewport_MouseLeave">
+                            <Border x:Name="HiddenTagsOverlayBackground"
+                                    Width="0"
+                                    Height="25"
+                                    CornerRadius="4"
+                                    Background="#F2222225"
+                                    BorderBrush="#6637373B"
+                                    BorderThickness="1"
+                                    MouseLeave="TagsViewport_MouseLeave"/>
+                            <ItemsControl x:Name="HiddenTagsOverlayItemsControl"
+                                          Canvas.Top="3"
+                                          ItemTemplate="{StaticResource TagChipTemplate}"
+                                          MouseLeave="TagsViewport_MouseLeave">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <StackPanel Orientation="Horizontal"/>
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                            </ItemsControl>
+                        </Canvas>
                     </Grid>
 
-                    <ItemsControl x:Name="TagsItemsControl"
-                                  Grid.Column="1"
-                                  Margin="12,0"
-                                  VerticalAlignment="Center">
-                        <ItemsControl.ItemsPanel>
-                            <ItemsPanelTemplate>
-                                <WrapPanel/>
-                            </ItemsPanelTemplate>
-                        </ItemsControl.ItemsPanel>
-                        <ItemsControl.ItemTemplate>
+                    <ToggleButton x:Name="FavoritesToggleButton"
+                                  Grid.Column="4"
+                                  Content="Ulubione"
+                                  HorizontalAlignment="Left"
+                                  VerticalAlignment="Center"
+                                  Style="{StaticResource FavoritesToggleStyle}"
+                                  Checked="FavoritesToggleButton_Checked"
+                                  Unchecked="FavoritesToggleButton_Checked">
+                        <ToggleButton.ContentTemplate>
                             <DataTemplate>
-                                <Border Margin="3,2"
-                                        Padding="8,4"
-                                        CornerRadius="5"
-                                        Background="{Binding Background}">
-                                    <StackPanel Orientation="Horizontal">
-                                        <TextBlock Text="{Binding Text}"
-                                                   Foreground="#FFE7E2E4"
-                                                   FontSize="11"/>
-                                        <Button Tag="{Binding Text}"
-                                                Content="×"
-                                                Margin="6,-3,-4,-3"
-                                                Padding="3,0"
-                                                Background="Transparent"
-                                                BorderThickness="0"
-                                                Foreground="#FFE7E2E4"
-                                                Cursor="Hand"
-                                                Click="RemoveTagButton_Click"/>
-                                    </StackPanel>
-                                </Border>
+                                <StackPanel Orientation="Horizontal"
+                                            HorizontalAlignment="Center"
+                                            VerticalAlignment="Center">
+                                    <iconPacks:PackIconLucide Kind="Heart"
+                                                              Width="15"
+                                                              Height="15"
+                                                              Margin="0,0,8,0"
+                                                              Foreground="#FFFF4D64"/>
+                                    <TextBlock Text="{Binding}"/>
+                                </StackPanel>
                             </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
+                        </ToggleButton.ContentTemplate>
+                    </ToggleButton>
 
-                    <StackPanel Grid.Column="2"
+                    <StackPanel Grid.Column="6"
                                 Orientation="Horizontal"
                                 VerticalAlignment="Center">
                         <RadioButton x:Name="LatestSortButton"
@@ -575,13 +907,15 @@
                                      IsChecked="True"
                                      Style="{StaticResource SortButtonStyle}"
                                      Checked="SortButton_Checked"/>
-                        <RadioButton GroupName="Sorting"
+                        <RadioButton x:Name="HotSortButton"
+                                     GroupName="Sorting"
                                      Content="Hot"
                                      Tag="hot"
                                      Margin="4,0"
                                      Style="{StaticResource SortButtonStyle}"
                                      Checked="SortButton_Checked"/>
-                        <RadioButton GroupName="Sorting"
+                        <RadioButton x:Name="ToplistSortButton"
+                                     GroupName="Sorting"
                                      Content="Toplist"
                                      Tag="toplist"
                                      Style="{StaticResource SortButtonStyle}"
@@ -590,7 +924,9 @@
                 </Grid>
             </Border>
 
-            <Grid Grid.Row="2">
+            <Grid Grid.Row="2"
+                  Grid.RowSpan="2"
+                  Panel.ZIndex="0">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="190"/>
                     <ColumnDefinition Width="*"/>
@@ -608,8 +944,9 @@
                         </LinearGradientBrush>
                     </Border.Background>
                     <ScrollViewer VerticalScrollBarVisibility="Auto">
-                        <StackPanel Margin="17,15">
-                            <TextBlock Text="Kategorie"
+                        <StackPanel Margin="17,15,17,15">
+                            <TextBlock x:Name="CategoriesLabelText"
+                                       Text="Kategorie"
                                        Foreground="#FF9D969A"
                                        FontSize="10"
                                        FontWeight="SemiBold"
@@ -635,7 +972,8 @@
 
                             <Border Height="1" Margin="0,12" Background="#FF332E32"/>
 
-                            <TextBlock Text="Czystość"
+                            <TextBlock x:Name="PurityLabelText"
+                                       Text="Czystość"
                                        Foreground="#FF9D969A"
                                        FontSize="10"
                                        FontWeight="SemiBold"
@@ -654,48 +992,51 @@
 
                             <Border Height="1" Margin="0,12" Background="#FF332E32"/>
 
-                            <TextBlock Text="Resolution"
+                            <TextBlock x:Name="ResolutionLabelText"
+                                       Text="Resolution"
                                        Foreground="#FF9D969A"
                                        FontSize="10"
                                        FontWeight="SemiBold"/>
                             <ComboBox x:Name="ResolutionComboBox"
                                       SelectionChanged="FilterComboBox_SelectionChanged">
-                                <ComboBoxItem Content="Any" Tag=""/>
+                                <ComboBoxItem x:Name="ResolutionAnyItem" Content="Any" Tag=""/>
                                 <ComboBoxItem Content="1920×1080" Tag="1920x1080"/>
                                 <ComboBoxItem Content="2560×1440" Tag="2560x1440"/>
                                 <ComboBoxItem Content="3840×2160" Tag="3840x2160"/>
                                 <ComboBoxItem Content="5120×2880" Tag="5120x2880"/>
                             </ComboBox>
 
-                            <TextBlock Text="Ratio"
+                            <TextBlock x:Name="RatioLabelText"
+                                       Text="Ratio"
                                        Foreground="#FF9D969A"
                                        FontSize="10"
                                        FontWeight="SemiBold"/>
                             <ComboBox x:Name="RatioComboBox"
                                       SelectionChanged="FilterComboBox_SelectionChanged">
-                                <ComboBoxItem Content="Any" Tag=""/>
+                                <ComboBoxItem x:Name="RatioAnyItem" Content="Any" Tag=""/>
                                 <ComboBoxItem Content="16:9" Tag="16x9"/>
                                 <ComboBoxItem Content="16:10" Tag="16x10"/>
                                 <ComboBoxItem Content="21:9" Tag="21x9"/>
                                 <ComboBoxItem Content="4:3" Tag="4x3"/>
-                                <ComboBoxItem Content="Portrait" Tag="portrait"/>
+                                <ComboBoxItem x:Name="RatioPortraitItem" Content="Portrait" Tag="portrait"/>
                             </ComboBox>
 
-                            <TextBlock Text="Color"
+                            <TextBlock x:Name="ColorLabelText"
+                                       Text="Color"
                                        Foreground="#FF9D969A"
                                        FontSize="10"
                                        FontWeight="SemiBold"/>
                             <ComboBox x:Name="ColorComboBox"
                                       SelectionChanged="FilterComboBox_SelectionChanged">
-                                <ComboBoxItem Content="Any" Tag=""/>
-                                <ComboBoxItem Content="Red" Tag="cc0000"/>
-                                <ComboBoxItem Content="Orange" Tag="ea4c00"/>
-                                <ComboBoxItem Content="Yellow" Tag="e7d600"/>
-                                <ComboBoxItem Content="Green" Tag="00aa55"/>
-                                <ComboBoxItem Content="Blue" Tag="0066cc"/>
-                                <ComboBoxItem Content="Purple" Tag="9900cc"/>
-                                <ComboBoxItem Content="Black" Tag="000000"/>
-                                <ComboBoxItem Content="White" Tag="ffffff"/>
+                                <ComboBoxItem x:Name="ColorAnyItem" Content="Any" Tag=""/>
+                                <ComboBoxItem x:Name="ColorRedItem" Content="Red" Tag="cc0000"/>
+                                <ComboBoxItem x:Name="ColorOrangeItem" Content="Orange" Tag="ea4c00"/>
+                                <ComboBoxItem x:Name="ColorYellowItem" Content="Yellow" Tag="e7d600"/>
+                                <ComboBoxItem x:Name="ColorGreenItem" Content="Green" Tag="00aa55"/>
+                                <ComboBoxItem x:Name="ColorBlueItem" Content="Blue" Tag="0066cc"/>
+                                <ComboBoxItem x:Name="ColorPurpleItem" Content="Purple" Tag="9900cc"/>
+                                <ComboBoxItem x:Name="ColorBlackItem" Content="Black" Tag="000000"/>
+                                <ComboBoxItem x:Name="ColorWhiteItem" Content="White" Tag="ffffff"/>
                             </ComboBox>
                         </StackPanel>
                     </ScrollViewer>
@@ -707,10 +1048,11 @@
                                   VerticalScrollBarVisibility="Auto"
                                   HorizontalScrollBarVisibility="Disabled"
                                   ScrollChanged="WallpapersScrollViewer_ScrollChanged">
-                        <ItemsControl x:Name="WallpapersItemsControl">
+                        <ItemsControl x:Name="WallpapersItemsControl"
+                                      Tag="Center">
                             <ItemsControl.ItemsPanel>
                                 <ItemsPanelTemplate>
-                                    <WrapPanel HorizontalAlignment="Center"/>
+                                    <WrapPanel HorizontalAlignment="{Binding Tag, RelativeSource={RelativeSource AncestorType=ItemsControl}}"/>
                                 </ItemsPanelTemplate>
                             </ItemsControl.ItemsPanel>
                             <ItemsControl.ItemTemplate>
@@ -723,6 +1065,16 @@
                                             <Image Source="{Binding ThumbnailImage}"
                                                    Stretch="UniformToFill"
                                                    RenderOptions.BitmapScalingMode="HighQuality"/>
+                                            <Button Tag="{Binding}"
+                                                    Style="{StaticResource FavoriteHeartButtonStyle}"
+                                                    HorizontalAlignment="Right"
+                                                    VerticalAlignment="Top"
+                                                    Margin="0,8,8,0"
+                                                    Click="FavoriteButton_Click">
+                                                <iconPacks:PackIconLucide Kind="Heart"
+                                                                          Width="17"
+                                                                          Height="17"/>
+                                            </Button>
                                             <Border VerticalAlignment="Bottom"
                                                     Padding="9,6"
                                                     Background="#A0000000">
@@ -760,7 +1112,8 @@
                                     </Ellipse.RenderTransform>
                                 </Ellipse>
                             </Grid>
-                            <TextBlock Text="Ładowanie"
+                            <TextBlock x:Name="LoadingText"
+                                       Text="Ładowanie"
                                        Margin="0,12,0,0"
                                        Foreground="#FFD8D1D4"
                                        FontSize="11"

@@ -55,6 +55,36 @@
             <Setter Property="Background" Value="#FF3E8E82"/>
         </Style>
 
+        <Style x:Key="DetailsFavoriteHeartButtonStyle" TargetType="Button">
+            <Setter Property="Width" Value="34"/>
+            <Setter Property="Height" Value="34"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Background" Value="#CC2D2D30"/>
+            <Setter Property="Foreground" Value="#FFD0D0D4"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="HeartBackground"
+                                CornerRadius="17"
+                                Background="{TemplateBinding Background}">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="HeartBackground" Property="Background" Value="#EE3A3A3F"/>
+                            </Trigger>
+                            <DataTrigger Binding="{Binding IsFavorite}" Value="True">
+                                <Setter Property="Foreground" Value="#FFFF4D64"/>
+                            </DataTrigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <Style x:Key="WindowCaptionButtonStyle" TargetType="Button">
             <Setter Property="Width" Value="36"/>
             <Setter Property="Height" Value="32"/>
@@ -295,6 +325,16 @@
                         <Image x:Name="WallpaperPreviewImage"
                                Stretch="Uniform"
                                RenderOptions.BitmapScalingMode="HighQuality"/>
+                        <Button x:Name="FavoriteDetailsButton"
+                                Style="{StaticResource DetailsFavoriteHeartButtonStyle}"
+                                HorizontalAlignment="Right"
+                                VerticalAlignment="Top"
+                                Margin="0,12,12,0"
+                                Click="FavoriteDetailsButton_Click">
+                            <iconPacks:PackIconLucide Kind="Heart"
+                                                      Width="18"
+                                                      Height="18"/>
+                        </Button>
                         <Border x:Name="LoadingOverlay"
                                 Width="112"
                                 Height="112"

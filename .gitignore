@@ -4,6 +4,7 @@
 **/bin/
 **/obj/
 build-*/
+build/
 publish/
 publish-update/
 Download Stats/publish-fixed/

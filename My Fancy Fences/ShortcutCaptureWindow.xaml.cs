@@ -25,7 +25,7 @@ public partial class ShortcutCaptureWindow : Window
         Icon = AppIconProvider.Image;
         _keyboardHookProc = KeyboardHookCallback;
         DescriptionText.Text =
-            $"Wciśnij skrót, który ma przełączać na układ „{layoutName}”.";
+            $"{LocalizationService.T("Wciśnij skrót, który ma przełączać na układ")} „{layoutName}”.";
         Shortcut = currentShortcut;
         if (currentShortcut is not null)
         {
@@ -146,7 +146,7 @@ public partial class ShortcutCaptureWindow : Window
 
     private void ShowWaitingForMainKey()
     {
-        ShortcutText.Text = "Wciśnij jeszcze jeden klawisz";
+        ShortcutText.Text = LocalizationService.T("Wciśnij jeszcze jeden klawisz");
         ConfirmButton.IsEnabled = false;
         ResetPromptAfterKeyReleaseSoon();
     }
@@ -166,7 +166,7 @@ public partial class ShortcutCaptureWindow : Window
 
         if (Shortcut is null)
         {
-            ShortcutText.Text = "Dodaj Ctrl, Alt, Shift albo Win";
+            ShortcutText.Text = LocalizationService.T("Dodaj Ctrl, Alt, Shift albo Win");
             ConfirmButton.IsEnabled = false;
         }
         else
@@ -181,7 +181,7 @@ public partial class ShortcutCaptureWindow : Window
         _isWindowsModifierPressed = false;
         if (Shortcut is null)
         {
-            ShortcutText.Text = "Dodaj Ctrl, Alt, Shift albo Win";
+            ShortcutText.Text = LocalizationService.T("Dodaj Ctrl, Alt, Shift albo Win");
             ConfirmButton.IsEnabled = false;
         }
         else

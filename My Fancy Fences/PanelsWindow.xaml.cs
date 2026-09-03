@@ -12,6 +12,8 @@ namespace My_Fancy_Fences;
 
 public partial class PanelsWindow : Window
 {
+    private const double InitialWidthRatio = 0.683;
+    private const double InitialHeightRatio = 0.795;
     private bool _hasCheckedForUpdates;
     private string? _latestReleaseUrl;
     private UpdateCheckResult? _latestUpdate;
@@ -119,6 +121,7 @@ public partial class PanelsWindow : Window
         _committedAppearance = CreateAppearanceStateFromFields();
         InitializeComponent();
         Icon = AppIconProvider.Image;
+        ApplyInitialWindowBounds();
         _panelsSmoothScrollTimer.Tick += PanelsSmoothScrollTimer_Tick;
         DoubleClickActivationCheckBox.IsChecked = useDoubleClickToOpen;
         AppearanceHideHeaderCheckBox.IsChecked = hideHeader;
@@ -128,6 +131,7 @@ public partial class PanelsWindow : Window
         CurrentVersionText.Text = UpdateService.FormatVersion(UpdateService.CurrentVersion);
         UpdatePanels(panels);
         UpdateLayouts(layouts, activeLayoutId);
+        RefreshLocalizedText();
         Closed += (_, _) =>
         {
             _panelsSmoothScrollTimer.Stop();
@@ -138,6 +142,42 @@ public partial class PanelsWindow : Window
         };
 
         _ = ApplyStartupUpdateStatusAsync();
+    }
+
+    private void ApplyInitialWindowBounds()
+    {
+        var workArea = SystemParameters.WorkArea;
+        Width = Math.Clamp(workArea.Width * InitialWidthRatio, MinWidth, workArea.Width - 32);
+        Height = Math.Clamp(workArea.Height * InitialHeightRatio, MinHeight, workArea.Height - 32);
+        Left = workArea.Left + (workArea.Width - Width) / 2;
+        Top = workArea.Top + (workArea.Height - Height) / 2;
+    }
+
+    private void RefreshLocalizedText()
+    {
+        Title = LocalizationService.T("Zarządzanie");
+
+        GeneralTabButton.Content = LocalizationService.T("Ustawienia ogólne");
+        PanelsTabButton.Content = LocalizationService.T("Panele");
+        WallpaperTabButton.Content = LocalizationService.T("Tapeta");
+        AppearanceTabButton.Content = LocalizationService.T("Wygląd");
+        ImportExportTabButton.Content = LocalizationService.T("Import / eksport");
+        ShortcutsTabButton.Content = LocalizationService.T("Skróty");
+        UpdatesTabButton.Content = LocalizationService.T("Aktualizacja");
+
+        GeneralHeaderText.Text = LocalizationService.T("Ustawienia ogólne");
+        GeneralDescriptionText.Text = LocalizationService.T("Podstawowe narzędzia aplikacji");
+        RefreshIconsTitleText.Text = LocalizationService.T("Odśwież ikony");
+        RefreshIconsDescriptionText.Text = LocalizationService.T("Ponownie pobiera ikony skrótów we wszystkich panelach.");
+        RefreshIconsButton.Content = LocalizationService.T("Odśwież ikony");
+        OpeningItemsTitleText.Text = LocalizationService.T("Uruchamianie elementów");
+        OpeningItemsDescriptionText.Text = LocalizationService.T("Domyślnie ikony uruchamiają się pojedynczym kliknięciem.");
+        DoubleClickActivationCheckBox.Content = LocalizationService.T("Uruchamiaj dwuklikiem");
+        LanguageTitleText.Text = LocalizationService.T("Język");
+        LanguageDescriptionText.Text = LocalizationService.T("Język interfejsu");
+
+        RefreshShortcutItems();
+        _embeddedWallpaperWindow?.RefreshLocalizedText();
     }
 
     private async Task ApplyStartupUpdateStatusAsync()
@@ -261,11 +301,11 @@ public partial class PanelsWindow : Window
             {
                 var hasShortcut = _layoutShortcutAssignments.TryGetValue(layout.Id, out var shortcut);
                 var shortcutText = hasShortcut
-                    ? $"Aktywny skrót klawiszowy: {shortcut!.DisplayText}"
-                    : "Brak przypisanego skrótu";
+                    ? $"{LocalizationService.T("Aktywny skrót klawiszowy")}: {shortcut!.DisplayText}"
+                    : LocalizationService.T("Brak przypisanego skrótu");
                 return new LayoutShortcutItem(
                     layout.Id,
-                    $"Przełącz na układ: {LocalizationService.T(layout.Name)}",
+                    $"{LocalizationService.T("Przełącz na układ")}: {LocalizationService.T(layout.Name)}",
                     shortcutText,
                     hasShortcut);
             })
@@ -665,6 +705,7 @@ public partial class PanelsWindow : Window
             WallpaperContentHost.Content = _embeddedWallpaperWindow.DetachForEmbedding();
         }
 
+        _embeddedWallpaperWindow.RefreshLocalizedText();
         await _embeddedWallpaperWindow.InitializeEmbeddedAsync();
     }
 
@@ -700,7 +741,7 @@ public partial class PanelsWindow : Window
 
         var confirmation = new ConfirmationWindow(
             LocalizationService.T("Nowa wersja jest gotowa"),
-            "Program pobierze aktualny wariant aplikacji, zamknie się, zainstaluje nową wersję i uruchomi ponownie.\n\nCzy rozpocząć automatyczną aktualizację?",
+            LocalizationService.T("Program pobierze aktualny wariant aplikacji, zamknie się, zainstaluje nową wersję i uruchomi ponownie.\n\nCzy rozpocząć automatyczną aktualizację?"),
             LocalizationService.T("Aktualizuj"),
             LocalizationService.T("Nie teraz"),
             positiveConfirm: true)
@@ -717,18 +758,18 @@ public partial class PanelsWindow : Window
         try
         {
             var progress = new Progress<double>(value =>
-                UpdateStatusText.Text = $"Pobieranie aktualizacji… {value:P0}");
+                UpdateStatusText.Text = $"{LocalizationService.T("Pobieranie aktualizacji…")} {value:P0}");
             await ApplicationUpdater.PrepareUpdateAsync(update, progress);
-            UpdateStatusText.Text = "Instalowanie aktualizacji…";
+            UpdateStatusText.Text = LocalizationService.T("Instalowanie aktualizacji…");
             Application.Current.Shutdown();
         }
         catch (Exception exception)
         {
-            UpdateStatusText.Text = "Nie udało się zainstalować aktualizacji.";
+            UpdateStatusText.Text = LocalizationService.T("Nie udało się zainstalować aktualizacji.");
             var error = new ConfirmationWindow(
-                "Aktualizacja nie powiodła się",
+                LocalizationService.T("Aktualizacja nie powiodła się"),
                 exception.Message,
-                "OK")
+                LocalizationService.T("OK"))
             {
                 Owner = this
             };
@@ -966,7 +1007,7 @@ public partial class PanelsWindow : Window
     {
         var dialog = new SaveFileDialog
         {
-            Title = "Eksport konfiguracji My Fancy Fences",
+            Title = LocalizationService.T("Eksport konfiguracji My Fancy Fences"),
             Filter = "Archiwum ZIP (*.zip)|*.zip",
             DefaultExt = ".zip",
             AddExtension = true,
@@ -978,18 +1019,18 @@ public partial class PanelsWindow : Window
 
         var button = (System.Windows.Controls.Button)sender;
         button.IsEnabled = false;
-        ArchiveStatusText.Text = "Tworzenie archiwum…";
+        ArchiveStatusText.Text = LocalizationService.T("Tworzenie archiwum…");
         try
         {
             var result = await _exportConfiguration(
                 dialog.FileName,
                 ExportShortcutsCheckBox.IsChecked == true);
             ArchiveStatusText.Text =
-                $"Zapisano ZIP: {result.ArchivePath}\nPanele: {result.PanelCount}, skróty: {result.ShortcutCount}.";
+                $"{LocalizationService.T("Zapisano ZIP")}: {result.ArchivePath}\n{LocalizationService.T("Panele")}: {result.PanelCount}, {LocalizationService.T("skróty")}: {result.ShortcutCount}.";
         }
         catch (Exception exception)
         {
-            ArchiveStatusText.Text = $"Eksport nie powiódł się: {exception.Message}";
+            ArchiveStatusText.Text = $"{LocalizationService.T("Eksport nie powiódł się")}: {exception.Message}";
         }
         finally
         {
@@ -1001,7 +1042,7 @@ public partial class PanelsWindow : Window
     {
         var archiveDialog = new OpenFileDialog
         {
-            Title = "Import konfiguracji My Fancy Fences",
+            Title = LocalizationService.T("Import konfiguracji My Fancy Fences"),
             Filter = "Archiwum ZIP (*.zip)|*.zip",
             CheckFileExists = true,
             Multiselect = false
@@ -1012,10 +1053,10 @@ public partial class PanelsWindow : Window
         var importShortcuts = ImportShortcutsCheckBox.IsChecked == true;
 
         var confirmation = new ConfirmationWindow(
-            "Zaimportować konfigurację?",
-            "Obecne ustawienia zostaną zastąpione zawartością archiwum. Przed zmianą powstanie kopia zapasowa, a aplikacja uruchomi się ponownie.",
-            "Importuj",
-            "Anuluj")
+            LocalizationService.T("Zaimportować konfigurację?"),
+            LocalizationService.T("Obecne ustawienia zostaną zastąpione zawartością archiwum. Przed zmianą powstanie kopia zapasowa, a aplikacja uruchomi się ponownie."),
+            LocalizationService.T("Importuj"),
+            LocalizationService.T("Anuluj"))
         {
             Owner = this
         };
@@ -1024,18 +1065,18 @@ public partial class PanelsWindow : Window
 
         var button = (System.Windows.Controls.Button)sender;
         button.IsEnabled = false;
-        ArchiveStatusText.Text = "Importowanie konfiguracji…";
+        ArchiveStatusText.Text = LocalizationService.T("Importowanie konfiguracji…");
         try
         {
             await _importConfiguration(
                 archiveDialog.FileName,
                 importShortcuts,
                 null);
-            ArchiveStatusText.Text = "Import zakończony. Ponowne uruchamianie…";
+            ArchiveStatusText.Text = LocalizationService.T("Import zakończony. Ponowne uruchamianie…");
         }
         catch (Exception exception)
         {
-            ArchiveStatusText.Text = $"Import nie powiódł się: {exception.Message}";
+            ArchiveStatusText.Text = $"{LocalizationService.T("Import nie powiódł się")}: {exception.Message}";
             button.IsEnabled = true;
         }
     }
@@ -1058,6 +1099,7 @@ public partial class PanelsWindow : Window
             return;
 
         LocalizationService.SetLanguage(languageCode);
+        RefreshLocalizedText();
         UpdateLayouts(_layouts, _activeLayoutId);
         _layoutManageWindow?.UpdateLayouts(_layouts);
     }

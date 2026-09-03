@@ -532,7 +532,7 @@ public partial class MainWindow : Window
 
         try
         {
-            AppendMenu(menu, MfString, TraySettingsCommand, "Zarządzanie");
+            AppendMenu(menu, MfString, TraySettingsCommand, LocalizationService.T("Zarządzanie"));
             AppendMenu(menu, MfString, TrayWallpapersCommand, LocalizationService.T("Tapety"));
             AppendMenu(menu, MfString, TrayNewPanelCommand, LocalizationService.T("Dodaj nowy panel"));
             AppendMenu(menu, MfSeparator, 0, string.Empty);
@@ -745,7 +745,7 @@ public partial class MainWindow : Window
                 if (desktopItems.Count == 0)
                 {
                     desktopItems.Add(new DesktopItem(
-                        $"Aby dodać skrót kliknij tutaj{Environment.NewLine}albo przeciągnij ikonę",
+                        $"{LocalizationService.T("Aby dodać skrót kliknij tutaj")}{Environment.NewLine}{LocalizationService.T("albo przeciągnij ikonę")}",
                         AddShortcutPlaceholderPath,
                         CreateAddShortcutIcon()));
                 }
@@ -806,7 +806,7 @@ public partial class MainWindow : Window
         if (desktopItems.Count == 0)
         {
             desktopItems.Add(new DesktopItem(
-                $"Aby dodać skrót kliknij tutaj{Environment.NewLine}albo przeciągnij ikonę",
+                $"{LocalizationService.T("Aby dodać skrót kliknij tutaj")}{Environment.NewLine}{LocalizationService.T("albo przeciągnij ikonę")}",
                 AddShortcutPlaceholderPath,
                 CreateAddShortcutIcon()));
         }
@@ -1296,10 +1296,10 @@ public partial class MainWindow : Window
             ? fallbackName
             : displayName;
         var confirmation = new ConfirmationWindow(
-            "Usunąć ikonę?",
-            $"Czy przenieść „{itemName}” do Kosza?\n\nElement zniknie z tego panelu.",
-            "Usuń",
-            "Anuluj")
+            LocalizationService.T("Usunąć ikonę?"),
+            $"{LocalizationService.T("Czy przenieść")} „{itemName}” {LocalizationService.T("do Kosza?")}\n\n{LocalizationService.T("Element zniknie z tego panelu.")}",
+            LocalizationService.T("Usuń"),
+            LocalizationService.T("Anuluj"))
         {
             Owner = this
         };
@@ -1329,9 +1329,9 @@ public partial class MainWindow : Window
         catch (Exception exception)
         {
             var error = new ConfirmationWindow(
-                "Nie udało się usunąć ikony",
+                LocalizationService.T("Nie udało się usunąć ikony"),
                 exception.Message,
-                "OK")
+                LocalizationService.T("OK"))
             {
                 Owner = this
             };
@@ -1509,15 +1509,15 @@ public partial class MainWindow : Window
             return;
 
         var panelName = string.IsNullOrWhiteSpace(TitleText.Text)
-            ? "bez nazwy"
+            ? LocalizationService.T("bez nazwy")
             : TitleText.Text.Trim();
         var itemDescription = paths.Length == 1
-            ? $"element „{Path.GetFileName(paths[0].TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar))}”"
-            : $"{paths.Length} elementy";
+            ? $"{LocalizationService.T("element")} „{Path.GetFileName(paths[0].TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar))}”"
+            : $"{paths.Length} {LocalizationService.T("elementy")}";
         var confirmation = new ConfirmationWindow(
-            $"Dodać do panelu „{panelName}”?",
-            $"Czy dodać skrót do {itemDescription} w panelu „{panelName}”?\n\nOryginalne pliki zostaną na swoim miejscu, a aplikacja zapisze tylko skrót w swoich danych.",
-            "Dodaj",
+            $"{LocalizationService.T("Dodać do panelu")} „{panelName}”?",
+            $"{LocalizationService.T("Czy dodać skrót do")} {itemDescription} {LocalizationService.T("w panelu")} „{panelName}”?\n\n{LocalizationService.T("Oryginalne pliki zostaną na swoim miejscu, a aplikacja zapisze tylko skrót w swoich danych.")}",
+            LocalizationService.T("Dodaj"),
             positiveConfirm: true)
         {
             Owner = this
@@ -1553,9 +1553,9 @@ public partial class MainWindow : Window
             return;
 
         var message = failures.Count == 1
-            ? $"Nie udało się dodać elementu „{failures[0]}”."
-            : $"Nie udało się dodać {failures.Count} elementów.";
-        var error = new ConfirmationWindow("Nie udało się dodać", message, "OK")
+            ? $"{LocalizationService.T("Nie udało się dodać elementu")} „{failures[0]}”."
+            : $"{LocalizationService.T("Nie udało się dodać")} {failures.Count} {LocalizationService.T("elementów")}.";
+        var error = new ConfirmationWindow(LocalizationService.T("Nie udało się dodać"), message, LocalizationService.T("OK"))
         {
             Owner = this
         };
@@ -1568,8 +1568,8 @@ public partial class MainWindow : Window
 
         var dialog = new OpenFileDialog
         {
-            Title = "Wybierz aplikację, plik albo skrót",
-            Filter = "Aplikacje, pliki i skróty|*.exe;*.lnk;*.url;*.website;*.*|Wszystkie pliki|*.*",
+            Title = LocalizationService.T("Wybierz aplikację, plik albo skrót"),
+            Filter = $"{LocalizationService.T("Aplikacje, pliki i skróty")}|*.exe;*.lnk;*.url;*.website;*.*|{LocalizationService.T("Wszystkie pliki")}|*.*",
             Multiselect = true
         };
 
@@ -1590,11 +1590,11 @@ public partial class MainWindow : Window
             return;
 
         var error = new ConfirmationWindow(
-            "Nie udało się dodać skrótu",
+            LocalizationService.T("Nie udało się dodać skrótu"),
             failures.Count == 1
-                ? $"Nie udało się dodać „{failures[0]}”."
-                : $"Nie udało się dodać {failures.Count} elementów.",
-            "OK")
+                ? $"{LocalizationService.T("Nie udało się dodać")} „{failures[0]}”."
+                : $"{LocalizationService.T("Nie udało się dodać")} {failures.Count} {LocalizationService.T("elementów")}.",
+            LocalizationService.T("OK"))
         {
             Owner = this
         };
@@ -1626,7 +1626,7 @@ public partial class MainWindow : Window
                     var destinationFullPath = Path.GetFullPath(destinationPath)
                         .TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
                     if (destinationFullPath.StartsWith(sourceFullPath, StringComparison.OrdinalIgnoreCase))
-                        throw new IOException("Nie można kopiować folderu do jego podfolderu.");
+                        throw new IOException(LocalizationService.T("Nie można kopiować folderu do jego podfolderu."));
 
                     MoveDirectory(sourcePath, destinationPath);
                 }
@@ -1673,7 +1673,7 @@ public partial class MainWindow : Window
             StringComparison.OrdinalIgnoreCase))
         {
             if ((File.GetAttributes(sourceDirectory) & FileAttributes.ReparsePoint) != 0)
-                throw new IOException("Nie można bezpiecznie przenieść dowiązania między dyskami.");
+                throw new IOException(LocalizationService.T("Nie można bezpiecznie przenieść dowiązania między dyskami."));
 
             try
             {
@@ -1718,7 +1718,7 @@ public partial class MainWindow : Window
         foreach (var directoryPath in Directory.EnumerateDirectories(sourceDirectory))
         {
             if ((File.GetAttributes(directoryPath) & FileAttributes.ReparsePoint) != 0)
-                throw new IOException("Folder zawiera dowiązanie, którego nie można bezpiecznie przenieść między dyskami.");
+                throw new IOException(LocalizationService.T("Folder zawiera dowiązanie, którego nie można bezpiecznie przenieść między dyskami."));
 
             CopyDirectory(
                 directoryPath,
@@ -3278,7 +3278,7 @@ public partial class MainWindow : Window
             panel._newPanelIndex.ToString(),
             title,
             panel.HeaderIcon.Kind,
-            $"{CountPanelShortcuts(panel._sourceFolder)} skrótów",
+            $"{CountPanelShortcuts(panel._sourceFolder)} {LocalizationService.T("skrótów")}",
             $"{width:0} × {height:0} px · {LocalizationService.T("ikony")} {panel._iconSize:0} px",
             panel.IsVisible ? LocalizationService.T("Widoczny") : LocalizationService.T("Ukryty"),
             !panel.IsVisible);

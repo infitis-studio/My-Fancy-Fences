@@ -6,6 +6,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Documents;
+using System.Windows.Media;
 
 namespace My_Fancy_Fences;
 
@@ -169,7 +170,7 @@ public static class LocalizationService
             case TextBlock textBlock:
                 if (textBlock.Inlines.Count > 1)
                 {
-                    foreach (var run in textBlock.Inlines.OfType<Run>())
+                    foreach (var run in textBlock.Inlines.OfType<Run>().ToList())
                         run.Text = TranslateStored(run, run.Text);
                 }
                 else if (!BindingOperations.IsDataBound(textBlock, TextBlock.TextProperty))
@@ -190,7 +191,7 @@ public static class LocalizationService
         if (element is FrameworkElement frameworkElement && frameworkElement.ToolTip is string tooltip)
             frameworkElement.ToolTip = T(tooltip);
 
-        foreach (var child in GetLogicalChildren(element))
+        foreach (var child in GetChildren(element))
             ApplyElement(child, visited);
     }
 
@@ -209,22 +210,46 @@ public static class LocalizationService
         return T(original);
     }
 
-    private static IEnumerable<DependencyObject> GetLogicalChildren(DependencyObject parent)
+    private static IEnumerable<DependencyObject> GetChildren(DependencyObject parent)
     {
-        IEnumerable children;
+        IEnumerable logicalChildren;
         try
         {
-            children = LogicalTreeHelper.GetChildren(parent);
+            logicalChildren = LogicalTreeHelper.GetChildren(parent);
         }
         catch
         {
-            yield break;
+            logicalChildren = Array.Empty<object>();
         }
 
-        foreach (var child in children)
+        foreach (var child in logicalChildren)
         {
             if (child is DependencyObject dependencyObject)
                 yield return dependencyObject;
+        }
+
+        var visualChildrenCount = 0;
+        try
+        {
+            visualChildrenCount = VisualTreeHelper.GetChildrenCount(parent);
+        }
+        catch
+        {
+        }
+
+        for (var index = 0; index < visualChildrenCount; index++)
+        {
+            DependencyObject? child = null;
+            try
+            {
+                child = VisualTreeHelper.GetChild(parent, index);
+            }
+            catch
+            {
+            }
+
+            if (child is not null)
+                yield return child;
         }
     }
 
@@ -241,6 +266,12 @@ public static class LocalizationService
             result["es"][pl] = es; result["it"][pl] = it; result["pt"][pl] = pt;
             result["nl"][pl] = nl; result["cs"][pl] = cs; result["uk"][pl] = uk;
             result["ru"][pl] = ru; result["zh-CN"][pl] = zh;
+        }
+
+        void AddEnglishFallback(string pl, string en)
+        {
+            foreach (var language in result.Values)
+                language[pl] = en;
         }
 
         Add("Ustawienia", "Settings", "Einstellungen", "Paramètres", "Ajustes", "Impostazioni", "Configurações", "Instellingen", "Nastavení", "Налаштування", "Настройки", "设置");
@@ -348,6 +379,169 @@ public static class LocalizationService
         Add("Usunąć układ?", "Delete layout?", "Layout löschen?", "Supprimer la disposition ?", "¿Eliminar diseño?", "Eliminare il layout?", "Excluir layout?", "Indeling verwijderen?", "Odstranit rozložení?", "Видалити макет?", "Удалить макет?", "删除布局？");
         Add("Czy na pewno usunąć układ", "Are you sure you want to delete layout", "Möchtest du das Layout wirklich löschen", "Voulez-vous vraiment supprimer la disposition", "¿Seguro que quieres eliminar el diseño", "Vuoi davvero eliminare il layout", "Tem certeza de que deseja excluir o layout", "Weet je zeker dat je de indeling wilt verwijderen", "Opravdu chcete odstranit rozložení", "Ви справді хочете видалити макет", "Вы уверены, что хотите удалить макет", "确定要删除布局");
         Add("Tej operacji nie można cofnąć.", "This action cannot be undone.", "Diese Aktion kann nicht rückgängig gemacht werden.", "Cette action est irréversible.", "Esta acción no se puede deshacer.", "Questa operazione non può essere annullata.", "Esta ação não pode ser desfeita.", "Deze actie kan niet ongedaan worden gemaakt.", "Tuto akci nelze vrátit zpět.", "Цю дію не можна скасувати.", "Это действие нельзя отменить.", "此操作无法撤销。");
+
+        AddEnglishFallback("Anime", "Anime");
+        AddEnglishFallback("Any", "Any");
+        AddEnglishFallback("Barwa", "Hue");
+        AddEnglishFallback("Black", "Black");
+        AddEnglishFallback("Blue", "Blue");
+        AddEnglishFallback("Cofnij wszystkie zmiany", "Undo all changes");
+        AddEnglishFallback("Color", "Color");
+        AddEnglishFallback("Czcionka podpisów", "Caption font");
+        AddEnglishFallback("Dołącz skróty (.lnk, .url)", "Include shortcuts (.lnk, .url)");
+        AddEnglishFallback("Domyślnie ikony uruchamiają się pojedynczym kliknięciem.", "By default, icons open with a single click.");
+        AddEnglishFallback("Edytuj skrót", "Edit shortcut");
+        AddEnglishFallback("Eksport konfiguracji", "Export configuration");
+        AddEnglishFallback("Eksport konfiguracji My Fancy Fences", "Export My Fancy Fences configuration");
+        AddEnglishFallback("Eksportuj ZIP", "Export ZIP");
+        AddEnglishFallback("General", "General");
+        AddEnglishFallback("Green", "Green");
+        AddEnglishFallback("Hot", "Hot");
+        AddEnglishFallback("Import konfiguracji", "Import configuration");
+        AddEnglishFallback("Import konfiguracji My Fancy Fences", "Import My Fancy Fences configuration");
+        AddEnglishFallback("Importuj", "Import");
+        AddEnglishFallback("Importuj skróty", "Import shortcuts");
+        AddEnglishFallback("Importuj ZIP", "Import ZIP");
+        AddEnglishFallback("Jasność", "Brightness");
+        AddEnglishFallback("Latest", "Latest");
+        AddEnglishFallback("Link", "Link");
+        AddEnglishFallback("Ładowanie tagów...", "Loading tags...");
+        AddEnglishFallback("Mój pulpit", "My desktop");
+        AddEnglishFallback("My Fancy Fences", "My Fancy Fences");
+        AddEnglishFallback("Najnowsza wersja: ", "Latest version: ");
+        AddEnglishFallback("Nasycenie", "Saturation");
+        AddEnglishFallback("Odtwarza ustawienia z ZIP-a. Skróty trafią automatycznie do danych aplikacji.", "Restores settings from a ZIP. Shortcuts will be placed in the app data automatically.");
+        AddEnglishFallback("Orange", "Orange");
+        AddEnglishFallback("Otwórz zakładkę, aby sprawdzić aktualizacje", "Open the tab to check for updates");
+        AddEnglishFallback("People", "People");
+        AddEnglishFallback("Portrait", "Portrait");
+        AddEnglishFallback("Properties", "Properties");
+        AddEnglishFallback("Przenoszenie konfiguracji aplikacji i paneli", "Transfer app and panel configuration");
+        AddEnglishFallback("Przezroczystość", "Opacity");
+        AddEnglishFallback("Przypisz skrót", "Assign shortcut");
+        AddEnglishFallback("Purple", "Purple");
+        AddEnglishFallback("px", "px");
+        AddEnglishFallback("Ratio", "Ratio");
+        AddEnglishFallback("Red", "Red");
+        AddEnglishFallback("Resolution", "Resolution");
+        AddEnglishFallback("SFW", "SFW");
+        AddEnglishFallback("Sketchy", "Sketchy");
+        AddEnglishFallback("Skróty", "Shortcuts");
+        AddEnglishFallback("Skróty klawiszowe", "Keyboard shortcuts");
+        AddEnglishFallback("Skróty tworzone są automatycznie dla każdego układu paneli.", "Shortcuts are created automatically for each panel layout.");
+        AddEnglishFallback("Sprawdź dostępność nowej wersji na GitHubie", "Check for a new version on GitHub");
+        AddEnglishFallback("Tapety z Wallhaven", "Wallhaven wallpapers");
+        AddEnglishFallback("Toplist", "Toplist");
+        AddEnglishFallback("Ustawienia ogólne", "General settings");
+        AddEnglishFallback("Usuń skrót", "Remove shortcut");
+        AddEnglishFallback("v0.1.0", "v0.1.0");
+        AddEnglishFallback("W tej zakładce zmieniasz wygląd wszystkich paneli jednocześnie. Aby edytować tylko konkretny panel, kliknij dwukrotnie jego nagłówek lub górę panelu, jeśli nagłówek jest ukryty.", "This tab changes the appearance of all panels at once. To edit only one panel, double-click its header or the top of the panel if the header is hidden.");
+        AddEnglishFallback("Wciśnij kombinację klawiszy", "Press a key combination");
+        AddEnglishFallback("W trakcie tworzenia", "In progress");
+        AddEnglishFallback("White", "White");
+        AddEnglishFallback("Wpisz tagi...", "Type tags...");
+        AddEnglishFallback("Wybrane źródło", "Selected source");
+        AddEnglishFallback("Wybierz kolor obramowania", "Choose border color");
+        AddEnglishFallback("Wybierz kolor podpisów ikon", "Choose icon caption color");
+        AddEnglishFallback("Wybierz kolor tekstu", "Choose text color");
+        AddEnglishFallback("Wymagany jest przynajmniej jeden modyfikator: Ctrl, Alt, Shift albo Win.\nSam pojedynczy klawisz nie wystarczy.", "At least one modifier is required: Ctrl, Alt, Shift, or Win.\nA single key alone is not enough.");
+        AddEnglishFallback("Yellow", "Yellow");
+        AddEnglishFallback("Zainstalowana wersja: ", "Installed version: ");
+        AddEnglishFallback("Zapisuje ustawienia i panele w jednym archiwum ZIP.", "Saves settings and panels in one ZIP archive.");
+        AddEnglishFallback("Zapisz aktualny układ", "Save current layout");
+        AddEnglishFallback("Zatwierdź", "Confirm");
+        AddEnglishFallback("Aktualizacja nie powiodła się", "Update failed");
+        AddEnglishFallback("Aplikacje, pliki i skróty", "Apps, files, and shortcuts");
+        AddEnglishFallback("bez nazwy", "unnamed");
+        AddEnglishFallback("Brak tagów dla tej tapety.", "No tags for this wallpaper.");
+        AddEnglishFallback("Czy dodać skrót do", "Add a shortcut to");
+        AddEnglishFallback("Czy przenieść", "Move");
+        AddEnglishFallback("do Kosza?", "to the Recycle Bin?");
+        AddEnglishFallback("Dodać do panelu", "Add to panel");
+        AddEnglishFallback("Dodaj", "Add");
+        AddEnglishFallback("Dodaj Ctrl, Alt, Shift albo Win", "Add Ctrl, Alt, Shift, or Win");
+        AddEnglishFallback("Eksport nie powiódł się", "Export failed");
+        AddEnglishFallback("element", "item");
+        AddEnglishFallback("Element zniknie z tego panelu.", "The item will disappear from this panel.");
+        AddEnglishFallback("elementów", "items");
+        AddEnglishFallback("elementy", "items");
+        AddEnglishFallback("Import nie powiódł się", "Import failed");
+        AddEnglishFallback("Import zakończony. Ponowne uruchamianie…", "Import finished. Restarting…");
+        AddEnglishFallback("Importowanie konfiguracji…", "Importing configuration…");
+        AddEnglishFallback("Instalowanie aktualizacji…", "Installing update…");
+        AddEnglishFallback("Nie udało się dodać", "Could not add");
+        AddEnglishFallback("Nie udało się dodać elementu", "Could not add item");
+        AddEnglishFallback("Nie udało się dodać skrótu", "Could not add shortcut");
+        AddEnglishFallback("Nie udało się pobrać tagów.", "Could not download tags.");
+        AddEnglishFallback("Nie udało się pobrać tapet z Wallhaven.", "Could not download wallpapers from Wallhaven.");
+        AddEnglishFallback("Nie udało się pobrać tapety.", "Could not download the wallpaper.");
+        AddEnglishFallback("Nie udało się ustawić tapety.", "Could not set the wallpaper.");
+        AddEnglishFallback("Nie udało się usunąć ikony", "Could not remove icon");
+        AddEnglishFallback("Nie udało się zainstalować aktualizacji.", "Could not install the update.");
+        AddEnglishFallback("Nie znaleziono tapet dla wybranych filtrów.", "No wallpapers found for the selected filters.");
+        AddEnglishFallback("Obecne ustawienia zostaną zastąpione zawartością archiwum. Przed zmianą powstanie kopia zapasowa, a aplikacja uruchomi się ponownie.", "Current settings will be replaced with the archive contents. A backup will be created before the change, and the app will restart.");
+        AddEnglishFallback("OK", "OK");
+        AddEnglishFallback("Oryginalne pliki zostaną na swoim miejscu, a aplikacja zapisze tylko skrót w swoich danych.", "Original files will stay in place, and the app will save only a shortcut in its data.");
+        AddEnglishFallback("Panel zostanie trwale usunięty wraz z jego zapisanymi ustawieniami. Tej operacji nie można cofnąć.", "The panel will be permanently deleted with its saved settings. This action cannot be undone.");
+        AddEnglishFallback("Pobieranie aktualizacji…", "Downloading update…");
+        AddEnglishFallback("Pobieranie tapety...", "Downloading wallpaper...");
+        AddEnglishFallback("Pobrano", "Downloaded");
+        AddEnglishFallback("Pobrany plik nie jest prawidłowym obrazem.", "The downloaded file is not a valid image.");
+        AddEnglishFallback("Podaj kolor obramowania w formacie HEX, np. #FFFFFF.", "Enter the border color in HEX format, e.g. #FFFFFF.");
+        AddEnglishFallback("Podaj kolor podpisów ikon w formacie HEX, np. #FFFFFF.", "Enter the icon caption color in HEX format, e.g. #FFFFFF.");
+        AddEnglishFallback("Podaj kolor tekstu w formacie HEX, np. #FFFFFF.", "Enter the text color in HEX format, e.g. #FFFFFF.");
+        AddEnglishFallback("Podaj kolor w formacie HEX, np. #0B0E12.", "Enter the color in HEX format, e.g. #0B0E12.");
+        AddEnglishFallback("Program pobierze aktualny wariant aplikacji, zamknie się, zainstaluje nową wersję i uruchomi ponownie.\n\nCzy rozpocząć automatyczną aktualizację?", "The app will download the current app variant, close, install the new version, and restart.\n\nStart the automatic update?");
+        AddEnglishFallback("Przywrócić ustawienia?", "Restore settings?");
+        AddEnglishFallback("Przywróć", "Restore");
+        AddEnglishFallback("skróty", "shortcuts");
+        AddEnglishFallback("Tworzenie archiwum…", "Creating archive…");
+        AddEnglishFallback("Ustawiono jako tapetę.", "Set as wallpaper.");
+        AddEnglishFallback("Usunąć ikonę?", "Remove icon?");
+        AddEnglishFallback("Usunąć panel?", "Delete panel?");
+        AddEnglishFallback("w panelu", "in panel");
+        AddEnglishFallback("Wciśnij jeszcze jeden klawisz", "Press one more key");
+        AddEnglishFallback("Wciśnij skrót, który ma przełączać na układ", "Press the shortcut that should switch to layout");
+        AddEnglishFallback("Windows nie pozwolił ustawić tapety.", "Windows did not allow setting the wallpaper.");
+        AddEnglishFallback("Wszystkie pliki", "All files");
+        AddEnglishFallback("Wybierz aplikację, plik albo skrót", "Choose an app, file, or shortcut");
+        AddEnglishFallback("Zaimportować konfigurację?", "Import configuration?");
+        AddEnglishFallback("Zapisano ZIP", "Saved ZIP");
+        AddEnglishFallback("zostaną zastąpione wartościami domyślnymi.", "will be replaced with default values.");
+        AddEnglishFallback("tła i obramowania", "background and border");
+        AddEnglishFallback("czcionki nagłówka", "header font");
+        AddEnglishFallback("czcionki ikon", "icon font");
+        AddEnglishFallback("Aby dodać skrót kliknij tutaj", "Click here to add a shortcut");
+        AddEnglishFallback("Aktywny skrót klawiszowy", "Active keyboard shortcut");
+        AddEnglishFallback("albo przeciągnij ikonę", "or drag an icon");
+        AddEnglishFallback("Archiwum nie zawiera konfiguracji.", "The archive does not contain a configuration.");
+        AddEnglishFallback("Archiwum nie zawiera prawidłowego manifestu.", "The archive does not contain a valid manifest.");
+        AddEnglishFallback("Archiwum pochodzi z nowszej wersji aplikacji.", "The archive comes from a newer app version.");
+        AddEnglishFallback("Brak przypisanego skrótu", "No shortcut assigned");
+        AddEnglishFallback("Brak ulubionych tapet.", "No favorite wallpapers yet.");
+        AddEnglishFallback("Brak uprawnień do podmiany pliku aplikacji w obecnym folderze.", "Missing permission to replace the app file in the current folder.");
+        AddEnglishFallback("Dodano", "Added");
+        AddEnglishFallback("Folder zawiera dowiązanie, którego nie można bezpiecznie przenieść między dyskami.", "The folder contains a link that cannot be safely moved between drives.");
+        AddEnglishFallback("Kategoria", "Category");
+        AddEnglishFallback("Konfiguracja w archiwum jest nieprawidłowa.", "The configuration in the archive is invalid.");
+        AddEnglishFallback("Nie można bezpiecznie przenieść dowiązania między dyskami.", "Cannot safely move a link between drives.");
+        AddEnglishFallback("Nie można kopiować folderu do jego podfolderu.", "Cannot copy a folder into its subfolder.");
+        AddEnglishFallback("Nie można ustalić folderu aplikacji.", "Could not determine the app folder.");
+        AddEnglishFallback("Nie znaleziono wybranego archiwum.", "Selected archive was not found.");
+        AddEnglishFallback("Nie znaleziono zapisanej konfiguracji.", "Saved configuration was not found.");
+        AddEnglishFallback("Nieprawidłowy adres pliku aktualizacji.", "Invalid update file address.");
+        AddEnglishFallback("Plik konfiguracji jest nieprawidłowy.", "The configuration file is invalid.");
+        AddEnglishFallback("Pobrany plik aktualizacji jest niekompletny.", "The downloaded update file is incomplete.");
+        AddEnglishFallback("Pobrany plik nie jest prawidłową aplikacją Windows.", "The downloaded file is not a valid Windows app.");
+        AddEnglishFallback("Przełącz na układ", "Switch to layout");
+        AddEnglishFallback("Rozdzielczość", "Resolution");
+        AddEnglishFallback("Rozmiar", "Size");
+        AddEnglishFallback("skrótów", "shortcuts");
+        AddEnglishFallback("Typ", "Type");
+        AddEnglishFallback("Ulubione", "Favorites");
+        AddEnglishFallback("Wydanie nie zawiera pliku", "The release does not contain file");
+        AddEnglishFallback("Wymiary", "Dimensions");
+        AddEnglishFallback("Wyświetlenia", "Views");
 
         return result;
     }

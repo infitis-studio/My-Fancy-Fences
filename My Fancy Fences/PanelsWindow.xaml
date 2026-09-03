@@ -3,8 +3,8 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:iconPacks="http://metro.mahapps.com/winfx/xaml/iconpacks"
         Title="Zarządzanie"
-        Width="1040"
-        Height="700"
+        Width="1310"
+        Height="820"
         MinWidth="480"
         MinHeight="520"
         WindowStyle="None"
@@ -532,22 +532,22 @@
                         <RowDefinition Height="11"/>
                     </Grid.RowDefinitions>
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                        <RadioButton Content="Ustawienia ogólne" Tag="General" IsChecked="True"
+                        <RadioButton x:Name="GeneralTabButton" Content="Ustawienia ogólne" Tag="General" IsChecked="True"
                                      GroupName="SettingsTabs" Style="{StaticResource SettingsTabStyle}"
                                      Checked="SettingsTab_Checked"/>
-                        <RadioButton Content="Panele" Tag="Panels"
+                        <RadioButton x:Name="PanelsTabButton" Content="Panele" Tag="Panels"
                                      GroupName="SettingsTabs" Style="{StaticResource SettingsTabStyle}"
                                      Checked="SettingsTab_Checked"/>
                         <RadioButton x:Name="WallpaperTabButton" Content="Tapeta" Tag="Wallpaper"
                                      GroupName="SettingsTabs" Style="{StaticResource SettingsTabStyle}"
                                      Checked="SettingsTab_Checked"/>
-                        <RadioButton Content="Wygląd" Tag="Appearance"
+                        <RadioButton x:Name="AppearanceTabButton" Content="Wygląd" Tag="Appearance"
                                      GroupName="SettingsTabs" Style="{StaticResource SettingsTabStyle}"
                                      Checked="SettingsTab_Checked"/>
-                        <RadioButton Content="Import / eksport" Tag="ImportExport"
+                        <RadioButton x:Name="ImportExportTabButton" Content="Import / eksport" Tag="ImportExport"
                                      GroupName="SettingsTabs" Style="{StaticResource SettingsTabStyle}"
                                      Checked="SettingsTab_Checked"/>
-                        <RadioButton Content="Skróty" Tag="Shortcuts"
+                        <RadioButton x:Name="ShortcutsTabButton" Content="Skróty" Tag="Shortcuts"
                                      GroupName="SettingsTabs" Style="{StaticResource SettingsTabStyle}"
                                      Checked="SettingsTab_Checked"/>
                         <RadioButton x:Name="UpdatesTabButton" Content="Aktualizacja" Tag="Updates"
@@ -560,8 +560,8 @@
                 <Grid Grid.Row="1">
                     <Grid x:Name="GeneralTabContent" Margin="4,4,4,0">
                         <StackPanel>
-                            <TextBlock Text="Ustawienia ogólne" FontSize="18" FontWeight="SemiBold"/>
-                            <TextBlock Text="Podstawowe narzędzia aplikacji"
+                            <TextBlock x:Name="GeneralHeaderText" Text="Ustawienia ogólne" FontSize="18" FontWeight="SemiBold"/>
+                            <TextBlock x:Name="GeneralDescriptionText" Text="Podstawowe narzędzia aplikacji"
                                        Margin="0,4,0,18" Foreground="#FFA9A2A5" FontSize="11"/>
                             <Border Padding="16" CornerRadius="8" Background="#FF1E1E21"
                                     BorderBrush="#FF303035" BorderThickness="1">
@@ -574,12 +574,12 @@
                                     <iconPacks:PackIconLucide Kind="RefreshCw" Width="20" Height="20"
                                                               Foreground="#FFCFC7CA" VerticalAlignment="Top"/>
                                     <StackPanel Grid.Column="1" Margin="0,0,18,0">
-                                        <TextBlock Text="Odśwież ikony" FontWeight="SemiBold"/>
-                                        <TextBlock Margin="0,6,0,0" Foreground="#FFA9A2A5" FontSize="11"
+                                        <TextBlock x:Name="RefreshIconsTitleText" Text="Odśwież ikony" FontWeight="SemiBold"/>
+                                        <TextBlock x:Name="RefreshIconsDescriptionText" Margin="0,6,0,0" Foreground="#FFA9A2A5" FontSize="11"
                                                    TextWrapping="Wrap"
                                                    Text="Ponownie pobiera ikony skrótów we wszystkich panelach."/>
                                     </StackPanel>
-                                    <Button Grid.Column="2" Content="Odśwież ikony"
+                                    <Button x:Name="RefreshIconsButton" Grid.Column="2" Content="Odśwież ikony"
                                             VerticalAlignment="Center"
                                             Click="RefreshIconsButton_Click"/>
                                 </Grid>
@@ -595,8 +595,8 @@
                                     <iconPacks:PackIconLucide Kind="MousePointerClick" Width="20" Height="20"
                                                               Foreground="#FFCFC7CA" VerticalAlignment="Top"/>
                                     <StackPanel Grid.Column="1" Margin="0,0,18,0">
-                                        <TextBlock Text="Uruchamianie elementów" FontWeight="SemiBold"/>
-                                        <TextBlock Margin="0,6,0,0" Foreground="#FFA9A2A5" FontSize="11"
+                                        <TextBlock x:Name="OpeningItemsTitleText" Text="Uruchamianie elementów" FontWeight="SemiBold"/>
+                                        <TextBlock x:Name="OpeningItemsDescriptionText" Margin="0,6,0,0" Foreground="#FFA9A2A5" FontSize="11"
                                                    TextWrapping="Wrap"
                                                    Text="Domyślnie ikony uruchamiają się pojedynczym kliknięciem."/>
                                     </StackPanel>
@@ -620,8 +620,8 @@
                                     <iconPacks:PackIconLucide Kind="Languages" Width="20" Height="20"
                                                               Foreground="#FFCFC7CA" VerticalAlignment="Top"/>
                                     <StackPanel Grid.Column="1" Margin="0,0,18,0">
-                                        <TextBlock Text="Język" FontWeight="SemiBold"/>
-                                        <TextBlock Text="Język interfejsu" Margin="0,6,0,0"
+                                        <TextBlock x:Name="LanguageTitleText" Text="Język" FontWeight="SemiBold"/>
+                                        <TextBlock x:Name="LanguageDescriptionText" Text="Język interfejsu" Margin="0,6,0,0"
                                                    Foreground="#FFA9A2A5" FontSize="11"/>
                                     </StackPanel>
                                     <ComboBox x:Name="LanguageComboBox" Grid.Column="2"
