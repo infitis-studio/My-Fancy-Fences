@@ -64,8 +64,6 @@ jobs:
             - Improved management window spacing, dark controls, dropdowns, and sliders.
             - Added layout management improvements for independent panel arrangements.
             - Improved shortcut handling, removal dialogs, and app-managed shortcut storage.
-            - Added local download statistics helper source code.
-
             - WITH NET10: single EXE with .NET 10 included; no additional runtime required.
             - REQUIRES NET10: smaller single EXE; requires .NET 10 Desktop Runtime.
           files: |

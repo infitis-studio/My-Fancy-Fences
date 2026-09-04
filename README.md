@@ -45,7 +45,6 @@
 - Browse Wallhaven wallpapers with search and filters inside the management window
 - Preview, download, and set wallpapers without leaving the app
 - System tray controls and optional Windows startup
-- Lightweight download statistics helper for GitHub release downloads
 - Clean Lucide outline icons
 - Import and export configuration as a ZIP archive
 - Automatic settings backup
