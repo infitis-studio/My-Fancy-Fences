@@ -638,9 +638,9 @@
             ClipToBounds="True">
         <Border.Background>
             <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                <GradientStop Color="#FF191719" Offset="0"/>
-                <GradientStop Color="#FF141416" Offset=".5"/>
-                <GradientStop Color="#FF111113" Offset="1"/>
+                <GradientStop x:Name="OuterBackgroundStart" Color="#FF191719" Offset="0"/>
+                <GradientStop x:Name="OuterBackgroundMiddle" Color="#FF141416" Offset=".5"/>
+                <GradientStop x:Name="OuterBackgroundEnd" Color="#FF111113" Offset="1"/>
             </LinearGradientBrush>
         </Border.Background>
         <Grid x:Name="RootGrid">
@@ -656,9 +656,9 @@
                     MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
                 <Border.Background>
                     <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
-                        <GradientStop Color="#FF2B2025" Offset="0"/>
-                        <GradientStop Color="#FF1D1C20" Offset=".45"/>
-                        <GradientStop Color="#FF171719" Offset="1"/>
+                        <GradientStop x:Name="TitleBackgroundStart" Color="#FF2B2025" Offset="0"/>
+                        <GradientStop x:Name="TitleBackgroundMiddle" Color="#FF1D1C20" Offset=".45"/>
+                        <GradientStop x:Name="TitleBackgroundEnd" Color="#FF171719" Offset="1"/>
                     </LinearGradientBrush>
                 </Border.Background>
                 <Grid Margin="16,0,7,0">
@@ -716,14 +716,15 @@
                 </Grid>
             </Border>
 
-            <Border Grid.Row="1"
+            <Border x:Name="SourceToolbarBorder"
+                    Grid.Row="1"
                     BorderBrush="#FF302C30"
                     BorderThickness="0,0,0,1">
                 <Border.Background>
                     <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
-                        <GradientStop Color="#CC2B2025" Offset="0"/>
-                        <GradientStop Color="#661D1D20" Offset=".55"/>
-                        <GradientStop Color="#00141416" Offset="1"/>
+                        <GradientStop x:Name="ToolbarBackgroundStart" Color="#CC2B2025" Offset="0"/>
+                        <GradientStop x:Name="ToolbarBackgroundMiddle" Color="#FF1D1D20" Offset=".55"/>
+                        <GradientStop x:Name="ToolbarBackgroundEnd" Color="#FF141416" Offset="1"/>
                     </LinearGradientBrush>
                 </Border.Background>
                 <Grid Margin="15,10,15,11" Background="Transparent">
@@ -749,7 +750,7 @@
                               SelectionChanged="WallpaperSourceComboBox_SelectionChanged"
                               SelectedIndex="0">
                         <ComboBoxItem x:Name="WallhavenSourceItem" Content="Wallhaven" Tag="wallhaven"/>
-                        <ComboBoxItem x:Name="InProgressSourceItem" Content="W trakcie tworzenia" Tag="moewalls"/>
+                        <ComboBoxItem x:Name="MoeWallsSourceItem" Content="MoeWalls" Tag="moewalls"/>
                     </ComboBox>
 
                     <Grid x:Name="SearchBoxRoot"
@@ -897,7 +898,8 @@
                         </ToggleButton.ContentTemplate>
                     </ToggleButton>
 
-                    <StackPanel Grid.Column="6"
+                    <StackPanel x:Name="WallhavenTopSortPanel"
+                                Grid.Column="6"
                                 Orientation="Horizontal"
                                 VerticalAlignment="Center">
                         <RadioButton x:Name="LatestSortButton"
@@ -921,6 +923,38 @@
                                      Style="{StaticResource SortButtonStyle}"
                                      Checked="SortButton_Checked"/>
                     </StackPanel>
+                    <StackPanel x:Name="MoeWallsTopSortPanel"
+                                Grid.Column="6"
+                                Orientation="Horizontal"
+                                VerticalAlignment="Center"
+                                Visibility="Collapsed">
+                        <RadioButton x:Name="MoeWallsLatestSortButton"
+                                     GroupName="MoeWallsSorting"
+                                     Content="Latest"
+                                     Tag="latest"
+                                     Style="{StaticResource SortButtonStyle}"
+                                     Checked="MoeWallsSortButton_Checked"/>
+                        <RadioButton x:Name="MoeWallsOldestSortButton"
+                                     GroupName="MoeWallsSorting"
+                                     Content="Oldest"
+                                     Tag="oldest"
+                                     Margin="4,0"
+                                     Style="{StaticResource SortButtonStyle}"
+                                     Checked="MoeWallsSortButton_Checked"/>
+                        <RadioButton x:Name="MoeWallsMostDiscussedSortButton"
+                                     GroupName="MoeWallsSorting"
+                                     Content="Most discussed"
+                                     Tag="most-discussed"
+                                     Margin="4,0"
+                                     Style="{StaticResource SortButtonStyle}"
+                                     Checked="MoeWallsSortButton_Checked"/>
+                        <RadioButton x:Name="MoeWallsMostUpvotedSortButton"
+                                     GroupName="MoeWallsSorting"
+                                     Content="Most upvoted"
+                                     Tag="most-upvoted"
+                                     Style="{StaticResource SortButtonStyle}"
+                                     Checked="MoeWallsSortButton_Checked"/>
+                    </StackPanel>
                 </Grid>
             </Border>
 
@@ -938,13 +972,15 @@
                         BorderThickness="0,0,1,0">
                     <Border.Background>
                         <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                            <GradientStop Color="#FF2B2025" Offset="0"/>
-                            <GradientStop Color="#FF211C20" Offset=".45"/>
-                            <GradientStop Color="#FF181719" Offset="1"/>
+                            <GradientStop x:Name="SidebarBackgroundStart" Color="#FF2B2025" Offset="0"/>
+                            <GradientStop x:Name="SidebarBackgroundMiddle" Color="#FF211C20" Offset=".45"/>
+                            <GradientStop x:Name="SidebarBackgroundEnd" Color="#FF181719" Offset="1"/>
                         </LinearGradientBrush>
                     </Border.Background>
                     <ScrollViewer VerticalScrollBarVisibility="Auto">
-                        <StackPanel Margin="17,15,17,15">
+                        <Grid>
+                            <StackPanel x:Name="WallhavenFiltersPanel"
+                                    Margin="17,15,17,15">
                             <TextBlock x:Name="CategoriesLabelText"
                                        Text="Kategorie"
                                        Foreground="#FF9D969A"
@@ -1039,10 +1075,63 @@
                                 <ComboBoxItem x:Name="ColorWhiteItem" Content="White" Tag="ffffff"/>
                             </ComboBox>
                         </StackPanel>
+                            <StackPanel x:Name="MoeWallsFiltersPanel"
+                                    Margin="17,15,17,15"
+                                    Visibility="Collapsed">
+                            <TextBlock x:Name="MoeWallsCategoryLabelText"
+                                       Text="Kategoria"
+                                       Foreground="#FF9D969A"
+                                       FontSize="10"
+                                       FontWeight="SemiBold"
+                                       Margin="0,0,0,5"/>
+                            <ComboBox x:Name="MoeWallsCategoryComboBox"
+                                      SelectionChanged="FilterComboBox_SelectionChanged">
+                                <ComboBoxItem x:Name="MoeWallsCategoryAnyItem" Content="Any" Tag=""/>
+                                <ComboBoxItem Content="Anime" Tag="anime"/>
+                                <ComboBoxItem Content="Games" Tag="games"/>
+                                <ComboBoxItem Content="Superhero" Tag="superhero"/>
+                                <ComboBoxItem Content="Nature" Tag="nature"/>
+                                <ComboBoxItem Content="Car" Tag="car"/>
+                                <ComboBoxItem Content="TV &amp; Movie" Tag="tv"/>
+                                <ComboBoxItem Content="Holiday" Tag="holiday"/>
+                                <ComboBoxItem Content="Animal" Tag="animal"/>
+                                <ComboBoxItem Content="Fantasy" Tag="fantasy"/>
+                                <ComboBoxItem Content="Space" Tag="space"/>
+                                <ComboBoxItem Content="Horror" Tag="horror"/>
+                                <ComboBoxItem Content="Technology" Tag="technology"/>
+                                <ComboBoxItem Content="Football" Tag="football"/>
+                                <ComboBoxItem Content="Japan" Tag="japan"/>
+                                <ComboBoxItem Content="Hello Kitty" Tag="hello-kitty"/>
+                            </ComboBox>
+
+                            <TextBlock x:Name="MoeWallsResolutionLabelText"
+                                       Text="Rozdzielczość"
+                                       Foreground="#FF9D969A"
+                                       FontSize="10"
+                                       FontWeight="SemiBold"/>
+                            <ComboBox x:Name="MoeWallsResolutionComboBox"
+                                      SelectionChanged="FilterComboBox_SelectionChanged">
+                                <ComboBoxItem x:Name="MoeWallsResolutionAnyItem" Content="Any" Tag=""/>
+                                <ComboBoxItem Content="HD" Tag="hd"/>
+                                <ComboBoxItem Content="2K" Tag="2k"/>
+                                <ComboBoxItem Content="4K" Tag="4k"/>
+                                <ComboBoxItem Content="Ultrawide" Tag="ultrawide"/>
+                                <ComboBoxItem Content="Mobile" Tag="mobile"/>
+                            </ComboBox>
+
+                        </StackPanel>
+                        </Grid>
                     </ScrollViewer>
                 </Border>
 
                 <Grid Grid.Column="1">
+                    <Grid.Background>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                            <GradientStop x:Name="WallpaperContentBackgroundStart" Color="#FF181416" Offset="0"/>
+                            <GradientStop x:Name="WallpaperContentBackgroundMiddle" Color="#FF141316" Offset=".55"/>
+                            <GradientStop x:Name="WallpaperContentBackgroundEnd" Color="#FF101113" Offset="1"/>
+                        </LinearGradientBrush>
+                    </Grid.Background>
                     <ScrollViewer x:Name="WallpapersScrollViewer"
                                   Margin="8"
                                   VerticalScrollBarVisibility="Auto"
@@ -1059,12 +1148,20 @@
                                 <DataTemplate>
                                     <Button Style="{StaticResource WallpaperCardStyle}"
                                             Tag="{Binding}"
-                                            ToolTip="{Binding Resolution}"
-                                            Click="WallpaperButton_Click">
+                                            Click="WallpaperButton_Click"
+                                            MouseEnter="WallpaperButton_MouseEnter"
+                                            MouseLeave="WallpaperButton_MouseLeave">
                                         <Grid>
                                             <Image Source="{Binding ThumbnailImage}"
                                                    Stretch="UniformToFill"
                                                    RenderOptions.BitmapScalingMode="HighQuality"/>
+                                            <MediaElement LoadedBehavior="Manual"
+                                                          UnloadedBehavior="Stop"
+                                                          Stretch="UniformToFill"
+                                                          Volume="0"
+                                                          Visibility="Collapsed"
+                                                          MediaEnded="WallpaperVideo_MediaEnded"
+                                                          Unloaded="WallpaperVideo_Unloaded"/>
                                             <Button Tag="{Binding}"
                                                     Style="{StaticResource FavoriteHeartButtonStyle}"
                                                     HorizontalAlignment="Right"

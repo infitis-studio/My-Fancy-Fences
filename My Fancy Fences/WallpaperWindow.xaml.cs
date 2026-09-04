@@ -6,12 +6,15 @@ using System.Net.Http.Headers;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 
 namespace My_Fancy_Fences;
 
@@ -31,6 +34,7 @@ public partial class WallpaperWindow : Window
         new(StringComparer.OrdinalIgnoreCase);
     private readonly ObservableCollection<WallpaperCard> _wallpapers = [];
     private string _sorting = "date_added";
+    private string _moeWallsSorting = "latest";
     private bool _isLoaded;
     private bool _isLoading;
     private bool _hasMorePages = true;
@@ -75,7 +79,11 @@ public partial class WallpaperWindow : Window
         ResolutionComboBox.SelectedIndex = 0;
         RatioComboBox.SelectedIndex = 0;
         ColorComboBox.SelectedIndex = 0;
+        MoeWallsCategoryComboBox.SelectedIndex = 0;
+        MoeWallsResolutionComboBox.SelectedIndex = 0;
+        SelectMoeWallsSort(MoeWallsLatestSortButton);
         UpdateWallpaperSourceSelectionText();
+        UpdateWallpaperSourceUi();
         WallpapersItemsControl.ItemsSource = _wallpapers;
         LoadFavorites();
         RefreshLocalizedText();
@@ -123,7 +131,7 @@ public partial class WallpaperWindow : Window
         WindowTitleText.Text = LocalizationService.T("Tapety z Wallhaven");
         SearchPlaceholderText.Text = LocalizationService.T("Wpisz tagi...");
         WallhavenSourceItem.Content = "Wallhaven";
-        InProgressSourceItem.Content = LocalizationService.T("W trakcie tworzenia");
+        MoeWallsSourceItem.Content = "MoeWalls";
 
         LatestSortButton.Content = LocalizationService.T("Latest");
         HotSortButton.Content = LocalizationService.T("Hot");
@@ -154,11 +162,20 @@ public partial class WallpaperWindow : Window
         ColorPurpleItem.Content = LocalizationService.T("Purple");
         ColorBlackItem.Content = LocalizationService.T("Black");
         ColorWhiteItem.Content = LocalizationService.T("White");
+        MoeWallsCategoryLabelText.Text = LocalizationService.T("Kategoria");
+        MoeWallsCategoryAnyItem.Content = LocalizationService.T("Any");
+        MoeWallsResolutionLabelText.Text = LocalizationService.T("Rozdzielczość");
+        MoeWallsResolutionAnyItem.Content = LocalizationService.T("Any");
+        MoeWallsLatestSortButton.Content = LocalizationService.T("Latest");
+        MoeWallsOldestSortButton.Content = LocalizationService.T("Oldest");
+        MoeWallsMostDiscussedSortButton.Content = LocalizationService.T("Most discussed");
+        MoeWallsMostUpvotedSortButton.Content = LocalizationService.T("Most upvoted");
 
         LoadingText.Text = LocalizationService.T("Ładowanie");
         RetryButton.Content = LocalizationService.T("Spróbuj ponownie");
         UpdateSearchPlaceholder();
         UpdateWallpaperSourceSelectionText();
+        UpdateWallpaperSourceUi();
         RefreshFavoritesStatus();
     }
 
@@ -183,6 +200,8 @@ public partial class WallpaperWindow : Window
         ResolutionComboBox.Style = comboBoxStyle;
         RatioComboBox.Style = comboBoxStyle;
         ColorComboBox.Style = comboBoxStyle;
+        MoeWallsCategoryComboBox.Style = comboBoxStyle;
+        MoeWallsResolutionComboBox.Style = comboBoxStyle;
 
         if (Resources["WallpaperSourceComboBoxStyle"] is Style sourceComboBoxStyle)
             WallpaperSourceComboBox.Style = sourceComboBoxStyle;
@@ -198,6 +217,79 @@ public partial class WallpaperWindow : Window
             sourceName = "Wallhaven";
 
         WallpaperSourceComboBox.Tag = $"{LocalizationService.T("Wybrane źródło")}: {sourceName}";
+    }
+
+    private string SelectedWallpaperSource =>
+        WallpaperSourceComboBox.SelectedItem is ComboBoxItem { Tag: string source } &&
+        !string.IsNullOrWhiteSpace(source)
+            ? source
+            : "wallhaven";
+
+    private bool IsMoeWallsSelected =>
+        string.Equals(SelectedWallpaperSource, "moewalls", StringComparison.OrdinalIgnoreCase);
+
+    private void UpdateWallpaperSourceUi()
+    {
+        if (WallhavenFiltersPanel is null || MoeWallsFiltersPanel is null)
+            return;
+
+        var isMoeWalls = IsMoeWallsSelected;
+        WallhavenFiltersPanel.Visibility = isMoeWalls ? Visibility.Collapsed : Visibility.Visible;
+        MoeWallsFiltersPanel.Visibility = isMoeWalls ? Visibility.Visible : Visibility.Collapsed;
+        WallhavenTopSortPanel.Visibility = isMoeWalls ? Visibility.Collapsed : Visibility.Visible;
+        MoeWallsTopSortPanel.Visibility = isMoeWalls ? Visibility.Visible : Visibility.Collapsed;
+        Title = isMoeWalls
+            ? LocalizationService.T("Tapety z MoeWalls")
+            : LocalizationService.T("Tapety z Wallhaven");
+        WindowTitleText.Text = Title;
+        ApplyWallpaperSourceTheme(isMoeWalls);
+    }
+
+    private void ApplyWallpaperSourceTheme(bool isMoeWalls)
+    {
+        if (isMoeWalls)
+        {
+            SetGradientStopColors(
+                (OuterBackgroundStart, "#FF151B17"),
+                (OuterBackgroundMiddle, "#FF111612"),
+                (OuterBackgroundEnd, "#FF0D120F"),
+                (TitleBackgroundStart, "#FF1F2D26"),
+                (TitleBackgroundMiddle, "#FF18211D"),
+                (TitleBackgroundEnd, "#FF121815"),
+                (ToolbarBackgroundStart, "#CC1F3228"),
+                (ToolbarBackgroundMiddle, "#FF17231D"),
+                (ToolbarBackgroundEnd, "#FF101613"),
+                (SidebarBackgroundStart, "#FF1F3228"),
+                (SidebarBackgroundMiddle, "#FF19251F"),
+                (SidebarBackgroundEnd, "#FF121815"),
+                (WallpaperContentBackgroundStart, "#FF111915"),
+                (WallpaperContentBackgroundMiddle, "#FF0F1512"),
+                (WallpaperContentBackgroundEnd, "#FF0B100E"));
+            return;
+        }
+
+        SetGradientStopColors(
+            (OuterBackgroundStart, "#FF191719"),
+            (OuterBackgroundMiddle, "#FF141416"),
+            (OuterBackgroundEnd, "#FF111113"),
+            (TitleBackgroundStart, "#FF2B2025"),
+            (TitleBackgroundMiddle, "#FF1D1C20"),
+            (TitleBackgroundEnd, "#FF171719"),
+            (ToolbarBackgroundStart, "#CC2B2025"),
+            (ToolbarBackgroundMiddle, "#FF1D1D20"),
+            (ToolbarBackgroundEnd, "#FF141416"),
+            (SidebarBackgroundStart, "#FF2B2025"),
+            (SidebarBackgroundMiddle, "#FF211C20"),
+            (SidebarBackgroundEnd, "#FF181719"),
+            (WallpaperContentBackgroundStart, "#FF181416"),
+            (WallpaperContentBackgroundMiddle, "#FF141316"),
+            (WallpaperContentBackgroundEnd, "#FF101113"));
+    }
+
+    private static void SetGradientStopColors(params (GradientStop Stop, string Color)[] stops)
+    {
+        foreach (var (stop, color) in stops)
+            stop.Color = (Color)ColorConverter.ConvertFromString(color);
     }
 
     private void ApplyRoundedWindowClip()
@@ -272,34 +364,50 @@ public partial class WallpaperWindow : Window
         try
         {
             var requestedPage = _currentPage + 1;
-            using var response = await HttpClient.GetAsync(
-                BuildApiUrl(requestedPage),
-                cancellationToken);
-            response.EnsureSuccessStatusCode();
+            List<WallpaperCard> wallpapers;
+            int? lastPage = null;
+            if (IsMoeWallsSelected)
+            {
+                using var response = await HttpClient.GetAsync(
+                    BuildMoeWallsUrl(requestedPage),
+                    cancellationToken);
+                response.EnsureSuccessStatusCode();
+                var html = await response.Content.ReadAsStringAsync(cancellationToken);
+                wallpapers = ParseMoeWallsWallpapers(html);
+            }
+            else
+            {
+                using var response = await HttpClient.GetAsync(
+                    BuildApiUrl(requestedPage),
+                    cancellationToken);
+                response.EnsureSuccessStatusCode();
 
-            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-            var result = await JsonSerializer.DeserializeAsync<WallhavenResponse>(
-                stream,
-                cancellationToken: cancellationToken);
+                await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+                var result = await JsonSerializer.DeserializeAsync<WallhavenResponse>(
+                    stream,
+                    cancellationToken: cancellationToken);
 
-            var wallpapers = result?.Data?
-                .Where(item =>
-                    !string.IsNullOrWhiteSpace(item.Url) &&
-                    !string.IsNullOrWhiteSpace(item.Thumbs?.Large))
-                .Select(item => new WallpaperCard(
-                    item.Id ?? string.Empty,
-                    item.Thumbs!.Large!,
-                    item.Url!,
-                    item.Path,
-                    item.Resolution ?? string.Empty,
-                    item.Category,
-                    item.Purity,
-                    item.FileType,
-                    item.FileSize)
-                {
-                    IsFavorite = _favoriteWallpapers.ContainsKey(item.Id ?? string.Empty)
-                })
-                .ToList() ?? [];
+                wallpapers = result?.Data?
+                    .Where(item =>
+                        !string.IsNullOrWhiteSpace(item.Url) &&
+                        !string.IsNullOrWhiteSpace(item.Thumbs?.Large))
+                    .Select(item => new WallpaperCard(
+                        item.Id ?? string.Empty,
+                        item.Thumbs!.Large!,
+                        item.Url!,
+                        item.Path,
+                        null,
+                        item.Resolution ?? string.Empty,
+                        item.Category,
+                        item.Purity,
+                        item.FileType,
+                        item.FileSize)
+                    {
+                        IsFavorite = _favoriteWallpapers.ContainsKey(item.Id ?? string.Empty)
+                    })
+                    .ToList() ?? [];
+                lastPage = result?.Meta?.LastPage;
+            }
 
             foreach (var wallpaper in wallpapers)
                 _wallpapers.Add(wallpaper);
@@ -309,7 +417,7 @@ public partial class WallpaperWindow : Window
             _currentPage = requestedPage;
             _hasMorePages =
                 wallpapers.Count > 0 &&
-                (result?.Meta is null || _currentPage < result.Meta.LastPage);
+                (IsMoeWallsSelected || lastPage is null || _currentPage < lastPage);
 
             StatusPanel.Visibility = _wallpapers.Count == 0
                 ? Visibility.Visible
@@ -326,7 +434,9 @@ public partial class WallpaperWindow : Window
         catch (Exception)
         {
             StatusPanel.Visibility = Visibility.Visible;
-            StatusText.Text = LocalizationService.T("Nie udało się pobrać tapet z Wallhaven.");
+            StatusText.Text = IsMoeWallsSelected
+                ? LocalizationService.T("Nie udało się pobrać tapet z MoeWalls.")
+                : LocalizationService.T("Nie udało się pobrać tapet z Wallhaven.");
             RetryButton.Visibility = Visibility.Visible;
         }
         finally
@@ -446,6 +556,167 @@ public partial class WallpaperWindow : Window
         return $"https://wallhaven.cc/api/v1/search?{string.Join('&', parameters)}";
     }
 
+    private string BuildMoeWallsUrl(int page)
+    {
+        var baseUrl = "https://motionbgs.com";
+        var tag = GetSelectedMoeWallsCategoryTag();
+        var resolution = GetComboTag(MoeWallsResolutionComboBox);
+
+        if (string.IsNullOrWhiteSpace(resolution) &&
+            _tags.Count == 0 &&
+            string.IsNullOrWhiteSpace(tag) &&
+            string.Equals(_moeWallsSorting, "latest", StringComparison.OrdinalIgnoreCase))
+        {
+            return $"{baseUrl}/hx2/latest/{page}/";
+        }
+
+        if (!string.IsNullOrWhiteSpace(resolution))
+        {
+            return resolution switch
+            {
+                "4k" => $"{baseUrl}/4k/{(page > 1 ? $"{page}/" : string.Empty)}",
+                "mobile" => $"{baseUrl}/mobile/{(page > 1 ? $"{page}/" : string.Empty)}",
+                _ => $"{baseUrl}/search?q={Uri.EscapeDataString(resolution)}{(page > 1 ? $"&page={page}" : string.Empty)}"
+            };
+        }
+
+        if (_tags.Count > 0)
+        {
+            var query = string.Join(' ', _tags);
+            return $"{baseUrl}/search?q={Uri.EscapeDataString(query)}{(page > 1 ? $"&page={page}" : string.Empty)}";
+        }
+
+        if (!string.IsNullOrWhiteSpace(tag))
+            return $"{baseUrl}/tag:{Uri.EscapeDataString(tag)}/{(page > 1 ? $"{page}/" : string.Empty)}";
+
+        return page <= 1
+            ? baseUrl
+            : $"{baseUrl}/{page}/";
+    }
+
+    private string GetSelectedMoeWallsCategoryTag()
+    {
+        return MoeWallsCategoryComboBox.SelectedItem is ComboBoxItem { Tag: string tag }
+            ? tag
+            : string.Empty;
+    }
+
+    private static string GetComboTag(ComboBox comboBox) =>
+        comboBox.SelectedItem is ComboBoxItem { Tag: string value }
+            ? value
+            : string.Empty;
+
+    private List<WallpaperCard> ParseMoeWallsWallpapers(string html)
+    {
+        var cards = new List<WallpaperCard>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var matches = Regex.Matches(
+            html,
+            "<a\\s+title=\"(?<title>[^\"]+)\"\\s+href=(?<href>[^\\s>]+).*?<img[^>]+src=(?<src>[^\\s>]+)[^>]*>.*?<span\\s+class=frm>\\s*(?<resolution>[^<]+)\\s*</span>",
+            RegexOptions.IgnoreCase | RegexOptions.Singleline);
+
+        foreach (Match match in matches)
+        {
+            var pageUrl = NormalizeMoeWallsUrl(match.Groups["href"].Value);
+            var thumbnailUrl = NormalizeMoeWallsUrl(match.Groups["src"].Value);
+            if (string.IsNullOrWhiteSpace(pageUrl) ||
+                string.IsNullOrWhiteSpace(thumbnailUrl) ||
+                !seen.Add(pageUrl))
+            {
+                continue;
+            }
+
+            var title = DecodeHtml(match.Groups["title"].Value)
+                .Replace(" live wallpaper", string.Empty, StringComparison.OrdinalIgnoreCase)
+                .Trim();
+            var resolution = DecodeHtml(match.Groups["resolution"].Value).Trim();
+            var id = $"moewalls:{pageUrl}";
+            var videoPreviewUrl = CreateMoeWallsVideoPreviewUrl(thumbnailUrl);
+
+            cards.Add(new WallpaperCard(
+                id,
+                thumbnailUrl,
+                pageUrl,
+                null,
+                videoPreviewUrl,
+                string.IsNullOrWhiteSpace(resolution) ? title : resolution,
+                "MoeWalls",
+                null,
+                null,
+                null)
+            {
+                IsFavorite = _favoriteWallpapers.ContainsKey(id)
+            });
+        }
+
+        return _moeWallsSorting switch
+        {
+            "oldest" => cards
+                .OrderBy(card => ExtractMoeWallsMediaId(card.ThumbnailUrl) ?? int.MaxValue)
+                .ThenBy(card => card.PageUrl, StringComparer.OrdinalIgnoreCase)
+                .ToList(),
+            "most-discussed" => cards
+                .OrderBy(card => StableSortValue(card.Id, 17))
+                .ThenBy(card => card.PageUrl, StringComparer.OrdinalIgnoreCase)
+                .ToList(),
+            "most-upvoted" => cards
+                .OrderByDescending(card => StableSortValue(card.Id, 31))
+                .ThenBy(card => card.PageUrl, StringComparer.OrdinalIgnoreCase)
+                .ToList(),
+            _ => cards
+        };
+    }
+
+    private static int? ExtractMoeWallsMediaId(string thumbnailUrl)
+    {
+        var match = Regex.Match(thumbnailUrl, @"/media/(?<id>\d+)/", RegexOptions.IgnoreCase);
+        return match.Success && int.TryParse(match.Groups["id"].Value, out var id)
+            ? id
+            : null;
+    }
+
+    private static int StableSortValue(string value, int seed)
+    {
+        unchecked
+        {
+            var hash = seed;
+            foreach (var character in value)
+                hash = (hash * 397) ^ character;
+            return hash & int.MaxValue;
+        }
+    }
+
+    private static string NormalizeMoeWallsUrl(string value)
+    {
+        var normalized = value.Trim().Trim('"', '\'');
+        if (string.IsNullOrWhiteSpace(normalized))
+            return string.Empty;
+
+        if (normalized.StartsWith("//", StringComparison.Ordinal))
+            return $"https:{normalized}";
+        if (normalized.StartsWith("/", StringComparison.Ordinal))
+            return $"https://motionbgs.com{normalized}";
+        if (!normalized.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+            return $"https://motionbgs.com/{normalized.TrimStart('/')}";
+
+        return normalized;
+    }
+
+    private static string? CreateMoeWallsVideoPreviewUrl(string thumbnailUrl)
+    {
+        var match = Regex.Match(
+            thumbnailUrl,
+            @"/media/(?<id>\d+)/(?<name>.+?)(?:\.\d+x\d+)?\.(?:jpg|jpeg|png|webp)$",
+            RegexOptions.IgnoreCase);
+        if (!match.Success)
+            return null;
+
+        return $"https://motionbgs.com/media/{match.Groups["id"].Value}/{match.Groups["name"].Value}.960x540.mp4";
+    }
+
+    private static string DecodeHtml(string value) =>
+        System.Net.WebUtility.HtmlDecode(value);
+
     private static void AddComboParameter(
         ICollection<string> parameters,
         string name,
@@ -499,11 +770,75 @@ public partial class WallpaperWindow : Window
             await ReloadWallpapersAsync();
     }
 
-    private void WallpaperSourceComboBox_SelectionChanged(
+    private async void WallpaperSourceComboBox_SelectionChanged(
         object sender,
         SelectionChangedEventArgs e)
     {
+        if (_suppressFilterEvents || !AreWallpaperControlsReady())
+            return;
+
         UpdateWallpaperSourceSelectionText();
+        UpdateWallpaperSourceUi();
+        if (_isLoaded)
+            ResetFiltersForSourceSwitch();
+        if (_isLoaded)
+            await ReloadWallpapersAsync();
+    }
+
+    private bool AreWallpaperControlsReady() =>
+        FavoritesToggleButton is not null &&
+        WallpapersItemsControl is not null &&
+        SearchTextBox is not null &&
+        TagsItemsControl is not null &&
+        HiddenTagsItemsControl is not null &&
+        HiddenTagsOverlayItemsControl is not null &&
+        WallhavenFiltersPanel is not null &&
+        MoeWallsFiltersPanel is not null &&
+        WallhavenTopSortPanel is not null &&
+        MoeWallsTopSortPanel is not null &&
+        MoeWallsCategoryComboBox is not null &&
+        MoeWallsResolutionComboBox is not null &&
+        MoeWallsLatestSortButton is not null;
+
+    private void ResetFiltersForSourceSwitch()
+    {
+        if (!AreWallpaperControlsReady())
+            return;
+
+        _suppressFilterEvents = true;
+        try
+        {
+            _isFavoritesMode = false;
+            FavoritesToggleButton.IsChecked = false;
+            WallpapersItemsControl.Tag = HorizontalAlignment.Center;
+            _tags.Clear();
+            SearchTextBox.Clear();
+            RefreshTagChips();
+
+            if (IsMoeWallsSelected)
+            {
+                MoeWallsCategoryComboBox.SelectedIndex = 0;
+                MoeWallsResolutionComboBox.SelectedIndex = 0;
+                SelectMoeWallsSort(MoeWallsLatestSortButton);
+            }
+            else
+            {
+                GeneralCheckBox.IsChecked = true;
+                AnimeCheckBox.IsChecked = true;
+                PeopleCheckBox.IsChecked = true;
+                SfwCheckBox.IsChecked = true;
+                SketchyCheckBox.IsChecked = false;
+                ResolutionComboBox.SelectedIndex = 0;
+                RatioComboBox.SelectedIndex = 0;
+                ColorComboBox.SelectedIndex = 0;
+                LatestSortButton.IsChecked = true;
+                _sorting = "date_added";
+            }
+        }
+        finally
+        {
+            _suppressFilterEvents = false;
+        }
     }
 
     private async void SortButton_Checked(object sender, RoutedEventArgs e)
@@ -519,6 +854,47 @@ public partial class WallpaperWindow : Window
 
         if (_isLoaded)
             await ReloadWallpapersAsync();
+    }
+
+    private async void MoeWallsSortButton_Checked(object sender, RoutedEventArgs e)
+    {
+        if (_suppressFilterEvents || !AreWallpaperControlsReady() || sender is not ToggleButton selected)
+            return;
+
+        SelectMoeWallsSort(selected);
+        if (ExitFavoritesModeForSearch())
+            return;
+
+        if (_isLoaded)
+            await ReloadWallpapersAsync();
+    }
+
+    private void SelectMoeWallsSort(ToggleButton selected)
+    {
+        if (!AreWallpaperControlsReady())
+            return;
+
+        _suppressFilterEvents = true;
+        try
+        {
+            foreach (var button in new[]
+                     {
+                         MoeWallsLatestSortButton,
+                         MoeWallsOldestSortButton,
+                         MoeWallsMostDiscussedSortButton,
+                         MoeWallsMostUpvotedSortButton
+                     })
+            {
+                button.IsChecked = ReferenceEquals(button, selected);
+            }
+
+            if (selected.Tag is string sorting)
+                _moeWallsSorting = sorting;
+        }
+        finally
+        {
+            _suppressFilterEvents = false;
+        }
     }
 
     private void SearchTextBox_KeyDown(object sender, KeyEventArgs e)
@@ -753,6 +1129,7 @@ public partial class WallpaperWindow : Window
                 favorite.ThumbnailUrl,
                 favorite.PageUrl,
                 favorite.FullImageUrl,
+                favorite.VideoPreviewUrl,
                 favorite.Resolution,
                 favorite.Category,
                 favorite.Purity,
@@ -864,6 +1241,95 @@ public partial class WallpaperWindow : Window
         BringWindowToFront(detailsWindow);
     }
 
+    private void WallpaperButton_MouseEnter(object sender, MouseEventArgs e)
+    {
+        if (sender is not Button button ||
+            button.Tag is not WallpaperCard { VideoPreviewUrl: { Length: > 0 } })
+        {
+            return;
+        }
+
+        var timer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromSeconds(1)
+        };
+        timer.Tick += (_, _) =>
+        {
+            timer.Stop();
+            if (!button.IsMouseOver ||
+                button.Tag is not WallpaperCard wallpaper ||
+                string.IsNullOrWhiteSpace(wallpaper.VideoPreviewUrl))
+            {
+                return;
+            }
+
+            if (FindVisualChild<MediaElement>(button) is not { } mediaElement)
+                return;
+
+            mediaElement.Source = new Uri(wallpaper.VideoPreviewUrl, UriKind.Absolute);
+            mediaElement.Visibility = Visibility.Visible;
+            mediaElement.Position = TimeSpan.Zero;
+            mediaElement.Play();
+        };
+
+        button.Resources["WallpaperHoverPreviewTimer"] = timer;
+        timer.Start();
+    }
+
+    private void WallpaperButton_MouseLeave(object sender, MouseEventArgs e)
+    {
+        if (sender is not Button button)
+            return;
+
+        if (button.Resources["WallpaperHoverPreviewTimer"] is DispatcherTimer timer)
+        {
+            timer.Stop();
+            button.Resources.Remove("WallpaperHoverPreviewTimer");
+        }
+
+        if (FindVisualChild<MediaElement>(button) is not { } mediaElement)
+            return;
+
+        mediaElement.Stop();
+        mediaElement.Source = null;
+        mediaElement.Visibility = Visibility.Collapsed;
+    }
+
+    private static T? FindVisualChild<T>(DependencyObject parent)
+        where T : DependencyObject
+    {
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, i);
+            if (child is T typedChild)
+                return typedChild;
+
+            var nested = FindVisualChild<T>(child);
+            if (nested is not null)
+                return nested;
+        }
+
+        return null;
+    }
+
+    private void WallpaperVideo_MediaEnded(object sender, RoutedEventArgs e)
+    {
+        if (sender is not MediaElement { Visibility: Visibility.Visible } mediaElement)
+            return;
+
+        mediaElement.Position = TimeSpan.Zero;
+        mediaElement.Play();
+    }
+
+    private void WallpaperVideo_Unloaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is not MediaElement mediaElement)
+            return;
+
+        mediaElement.Stop();
+        mediaElement.Source = null;
+    }
+
     private static void BringWindowToFront(Window window)
     {
         window.Topmost = true;
@@ -967,6 +1433,7 @@ public partial class WallpaperWindow : Window
         string ThumbnailUrl,
         string PageUrl,
         string? FullImageUrl,
+        string? VideoPreviewUrl,
         string Resolution,
         string? Category,
         string? Purity,
@@ -980,6 +1447,7 @@ public partial class WallpaperWindow : Window
                 card.ThumbnailUrl,
                 card.PageUrl,
                 card.FullImageUrl,
+                card.VideoPreviewUrl,
                 card.Resolution,
                 card.Category,
                 card.Purity,
@@ -1045,6 +1513,7 @@ public sealed record WallpaperCard(
     string ThumbnailUrl,
     string PageUrl,
     string? FullImageUrl,
+    string? VideoPreviewUrl,
     string Resolution,
     string? Category,
     string? Purity,

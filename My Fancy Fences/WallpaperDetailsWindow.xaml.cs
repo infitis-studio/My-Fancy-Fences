@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -48,6 +49,7 @@ public partial class WallpaperDetailsWindow : Window
         _wallpaper.IsFavorite = IsFavoriteStored(_wallpaper.Id);
         FavoriteDetailsButton.DataContext = _wallpaper;
         PropertiesItemsControl.ItemsSource = _properties;
+        WallpaperLinkText.Text = _wallpaper.PageUrl;
         WallpaperPreviewImage.Source = WallpaperCard.CreateImage(wallpaper.ThumbnailUrl, 720);
         ApplyFallbackProperties();
         SizeChanged += (_, _) => ApplyRoundedWindowClip();
@@ -55,6 +57,7 @@ public partial class WallpaperDetailsWindow : Window
         Loaded += async (_, _) =>
         {
             ApplyRoundedWindowClip();
+            StartVideoPreviewIfAvailable();
             await LoadDetailsAsync();
         };
         Closed += (_, _) => ReleaseImageResources();
@@ -111,6 +114,14 @@ public partial class WallpaperDetailsWindow : Window
 
     private async Task LoadDetailsAsync()
     {
+        if (_wallpaper.Id.StartsWith("moewalls:", StringComparison.OrdinalIgnoreCase))
+        {
+            TagsItemsControl.ItemsSource = Array.Empty<string>();
+            TagsLoadingText.Text = LocalizationService.T("Szczegóły dla MoeWalls są w trakcie tworzenia.");
+            StopLoadingAnimation();
+            return;
+        }
+
         StartLoadingAnimation();
         TagsLoadingText.Visibility = Visibility.Visible;
 
@@ -350,10 +361,37 @@ public partial class WallpaperDetailsWindow : Window
         SaveFavorites(favorites);
     }
 
+    private void OpenLinkButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(_wallpaper.PageUrl))
+            return;
+
+        try
+        {
+            Process.Start(new ProcessStartInfo(_wallpaper.PageUrl)
+            {
+                UseShellExecute = true
+            });
+        }
+        catch
+        {
+            StatusText.Text = LocalizationService.T("Nie udało się otworzyć linku.");
+        }
+    }
+
     private async void SetWallpaperButton_Click(object sender, RoutedEventArgs e)
     {
         try
         {
+            if (!string.IsNullOrWhiteSpace(_wallpaper.VideoPreviewUrl) &&
+                Uri.TryCreate(_wallpaper.VideoPreviewUrl, UriKind.Absolute, out var liveWallpaperUri))
+            {
+                StatusText.Text = await LiveWallpaperService.TrySetAsync(liveWallpaperUri)
+                    ? LocalizationService.T("Ustawiono ruchomą tapetę.")
+                    : LocalizationService.T("Nie udało się ustawić ruchomej tapety.");
+                return;
+            }
+
             var path = await DownloadWallpaperAsync();
             if (path is null)
             {
@@ -398,9 +436,28 @@ public partial class WallpaperDetailsWindow : Window
         LoadingOverlay.Visibility = Visibility.Collapsed;
     }
 
+    private void StartVideoPreviewIfAvailable()
+    {
+        if (string.IsNullOrWhiteSpace(_wallpaper.VideoPreviewUrl))
+            return;
+
+        WallpaperPreviewVideo.Source = new Uri(_wallpaper.VideoPreviewUrl, UriKind.Absolute);
+        WallpaperPreviewVideo.Visibility = Visibility.Visible;
+        WallpaperPreviewVideo.Position = TimeSpan.Zero;
+        WallpaperPreviewVideo.Play();
+    }
+
+    private void WallpaperPreviewVideo_MediaEnded(object sender, RoutedEventArgs e)
+    {
+        WallpaperPreviewVideo.Position = TimeSpan.Zero;
+        WallpaperPreviewVideo.Play();
+    }
+
     private void ReleaseImageResources()
     {
         StopLoadingAnimation();
+        WallpaperPreviewVideo.Stop();
+        WallpaperPreviewVideo.Source = null;
         WallpaperPreviewImage.Source = null;
         TagsItemsControl.ItemsSource = null;
         PropertiesItemsControl.ItemsSource = null;

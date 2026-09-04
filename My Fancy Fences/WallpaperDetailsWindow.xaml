@@ -257,6 +257,24 @@
                                        FontWeight="SemiBold"
                                        Margin="0,0,0,10"/>
 
+                            <Grid Margin="0,0,0,9">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="94"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Link"
+                                           Foreground="#FF8F99A6"
+                                           FontSize="11"/>
+                                <TextBlock x:Name="WallpaperLinkText"
+                                           Grid.Column="1"
+                                           Foreground="#FF7FB6FF"
+                                           FontSize="11"
+                                           Text="Otwórz"
+                                           TextWrapping="Wrap"
+                                           Cursor="Hand"
+                                           MouseLeftButtonUp="OpenLinkButton_Click"/>
+                            </Grid>
+
                             <ItemsControl x:Name="PropertiesItemsControl">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
@@ -325,6 +343,13 @@
                         <Image x:Name="WallpaperPreviewImage"
                                Stretch="Uniform"
                                RenderOptions.BitmapScalingMode="HighQuality"/>
+                        <MediaElement x:Name="WallpaperPreviewVideo"
+                                      LoadedBehavior="Manual"
+                                      UnloadedBehavior="Stop"
+                                      Stretch="Uniform"
+                                      Volume="0"
+                                      Visibility="Collapsed"
+                                      MediaEnded="WallpaperPreviewVideo_MediaEnded"/>
                         <Button x:Name="FavoriteDetailsButton"
                                 Style="{StaticResource DetailsFavoriteHeartButtonStyle}"
                                 HorizontalAlignment="Right"

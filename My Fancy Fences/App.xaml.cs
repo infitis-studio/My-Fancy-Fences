@@ -35,11 +35,14 @@ public partial class App : Application
                     LocalizationService.Apply(window);
             }));
         base.OnStartup(e);
+        _ = LiveWallpaperService.RestoreLastLiveWallpaperAsync();
         _ = UpdateService.CheckAsync();
     }
 
     protected override void OnExit(ExitEventArgs e)
     {
+        LiveWallpaperService.Shutdown();
+
         if (_singleInstanceMutex is not null)
         {
             _singleInstanceMutex.ReleaseMutex();

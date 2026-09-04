@@ -408,8 +408,11 @@ public static class LocalizationService
         AddEnglishFallback("Ładowanie tagów...", "Loading tags...");
         AddEnglishFallback("Mój pulpit", "My desktop");
         AddEnglishFallback("My Fancy Fences", "My Fancy Fences");
+        AddEnglishFallback("Most discussed", "Most discussed");
+        AddEnglishFallback("Most upvoted", "Most upvoted");
         AddEnglishFallback("Najnowsza wersja: ", "Latest version: ");
         AddEnglishFallback("Nasycenie", "Saturation");
+        AddEnglishFallback("Oldest", "Oldest");
         AddEnglishFallback("Odtwarza ustawienia z ZIP-a. Skróty trafią automatycznie do danych aplikacji.", "Restores settings from a ZIP. Shortcuts will be placed in the app data automatically.");
         AddEnglishFallback("Orange", "Orange");
         AddEnglishFallback("Otwórz zakładkę, aby sprawdzić aktualizacje", "Open the tab to check for updates");
@@ -429,7 +432,10 @@ public static class LocalizationService
         AddEnglishFallback("Skróty", "Shortcuts");
         AddEnglishFallback("Skróty klawiszowe", "Keyboard shortcuts");
         AddEnglishFallback("Skróty tworzone są automatycznie dla każdego układu paneli.", "Shortcuts are created automatically for each panel layout.");
+        AddEnglishFallback("Sortowanie", "Sorting");
         AddEnglishFallback("Sprawdź dostępność nowej wersji na GitHubie", "Check for a new version on GitHub");
+        AddEnglishFallback("Szczegóły dla MoeWalls są w trakcie tworzenia.", "MoeWalls details are in progress.");
+        AddEnglishFallback("Tapety z MoeWalls", "MoeWalls wallpapers");
         AddEnglishFallback("Tapety z Wallhaven", "Wallhaven wallpapers");
         AddEnglishFallback("Toplist", "Toplist");
         AddEnglishFallback("Ustawienia ogólne", "General settings");
@@ -474,7 +480,10 @@ public static class LocalizationService
         AddEnglishFallback("Nie udało się dodać skrótu", "Could not add shortcut");
         AddEnglishFallback("Nie udało się pobrać tagów.", "Could not download tags.");
         AddEnglishFallback("Nie udało się pobrać tapet z Wallhaven.", "Could not download wallpapers from Wallhaven.");
+        AddEnglishFallback("Nie udało się pobrać tapet z MoeWalls.", "Could not download wallpapers from MoeWalls.");
         AddEnglishFallback("Nie udało się pobrać tapety.", "Could not download the wallpaper.");
+        AddEnglishFallback("Nie udało się otworzyć linku.", "Could not open the link.");
+        AddEnglishFallback("Nie udało się ustawić ruchomej tapety.", "Could not set the live wallpaper.");
         AddEnglishFallback("Nie udało się ustawić tapety.", "Could not set the wallpaper.");
         AddEnglishFallback("Nie udało się usunąć ikony", "Could not remove icon");
         AddEnglishFallback("Nie udało się zainstalować aktualizacji.", "Could not install the update.");
@@ -496,6 +505,7 @@ public static class LocalizationService
         AddEnglishFallback("Przywróć", "Restore");
         AddEnglishFallback("skróty", "shortcuts");
         AddEnglishFallback("Tworzenie archiwum…", "Creating archive…");
+        AddEnglishFallback("Ustawiono ruchomą tapetę.", "Live wallpaper set.");
         AddEnglishFallback("Ustawiono jako tapetę.", "Set as wallpaper.");
         AddEnglishFallback("Usunąć ikonę?", "Remove icon?");
         AddEnglishFallback("Usunąć panel?", "Delete panel?");

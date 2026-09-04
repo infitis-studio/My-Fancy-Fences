@@ -22,6 +22,7 @@
 
   <ItemGroup>
     <PackageReference Include="MahApps.Metro.IconPacks.Lucide" Version="6.2.1" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3537.50" />
   </ItemGroup>
 
   <ItemGroup>

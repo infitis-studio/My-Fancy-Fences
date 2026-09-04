@@ -73,8 +73,12 @@ jobs:
             My Fancy Fences ${{ github.ref_name }} for Windows x64.
 
             Highlights:
+            - Added MoeWalls browsing with source-specific filters, categories, sorting, and green source theme.
+            - Added animated wallpaper previews on hover and full preview in wallpaper details.
+            - Added experimental live wallpaper support with per-monitor playback.
             - Improved wallpaper browser toolbar layout with source selection, inline tag chips, favorites, and sorting controls.
             - Added favorite toggle inside wallpaper details.
+            - Added direct wallpaper source links in wallpaper details.
             - Improved wallpaper favorites view and empty-result handling.
             - Added better localization coverage for wallpaper and management labels.
             - Fixed the displayed installed version after automatic updates.
