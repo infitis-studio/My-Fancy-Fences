@@ -148,11 +148,25 @@ public static class ApplicationUpdater
             $target = '{{EscapePowerShell(targetPath)}}'
             $download = '{{EscapePowerShell(downloadedPath)}}'
             $backup = '{{EscapePowerShell(backupPath)}}'
+            $targetDirectory = Split-Path -LiteralPath $target -Parent
+            $applicationBaseName = [System.IO.Path]::GetFileNameWithoutExtension($target)
+            $sidecarPatterns = @(
+                "$applicationBaseName.dll",
+                "$applicationBaseName.deps.json",
+                "$applicationBaseName.runtimeconfig.json",
+                "$applicationBaseName.pdb"
+            )
             try {
                 Wait-Process -Id {{Environment.ProcessId}} -ErrorAction SilentlyContinue
                 Start-Sleep -Milliseconds 350
                 if (Test-Path -LiteralPath $backup) { Remove-Item -LiteralPath $backup -Force }
                 if (Test-Path -LiteralPath $target) { Move-Item -LiteralPath $target -Destination $backup -Force }
+                foreach ($pattern in $sidecarPatterns) {
+                    $sidecar = Join-Path -Path $targetDirectory -ChildPath $pattern
+                    if (Test-Path -LiteralPath $sidecar) {
+                        Remove-Item -LiteralPath $sidecar -Force -ErrorAction SilentlyContinue
+                    }
+                }
                 Move-Item -LiteralPath $download -Destination $target -Force
                 Start-Process -FilePath $target
                 Start-Sleep -Seconds 1

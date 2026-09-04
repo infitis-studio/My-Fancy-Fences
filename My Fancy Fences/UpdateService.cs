@@ -1,7 +1,8 @@
 using System.Diagnostics;
 using System.Net.Http;
-using System.Net;
 using System.Reflection;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace My_Fancy_Fences;
 
@@ -31,42 +32,56 @@ public static class UpdateService
     {
         try
         {
-            using var response = await Client.GetAsync(
-                "https://github.com/infitis-studio/My-Fancy-Fences/releases/latest",
-                HttpCompletionOption.ResponseHeadersRead);
-            if (response.StatusCode is not (HttpStatusCode.Found or
-                HttpStatusCode.MovedPermanently or
-                HttpStatusCode.TemporaryRedirect or
-                HttpStatusCode.PermanentRedirect))
-            {
-                response.EnsureSuccessStatusCode();
-            }
+            await using var stream = await Client.GetStreamAsync(
+                "https://api.github.com/repos/infitis-studio/My-Fancy-Fences/releases?per_page=30");
+            var releases = await JsonSerializer.DeserializeAsync<List<GitHubRelease>>(
+                stream,
+                new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true
+                });
 
-            var releaseUri = response.Headers.Location;
-            if (releaseUri is null)
+            var latestRelease = releases?
+                .Where(release => !release.Draft &&
+                                  TryParseVersion(release.TagName, out _))
+                .Select(release => new
+                {
+                    Release = release,
+                    Version = ParseVersionOrDefault(release.TagName)
+                })
+                .OrderByDescending(item => item.Version)
+                .FirstOrDefault();
+
+            if (latestRelease is null)
                 return new UpdateCheckResult(false, string.Empty, null, null, false, []);
-            if (!releaseUri.IsAbsoluteUri)
-                releaseUri = new Uri(new Uri("https://github.com"), releaseUri);
 
-            var tag = releaseUri.Segments.LastOrDefault()?.Trim('/') ?? string.Empty;
-            var releaseUrl = releaseUri.AbsoluteUri;
+            var tag = latestRelease.Release.TagName;
+            var releaseUrl = latestRelease.Release.HtmlUrl;
             var downloadBase =
                 $"https://github.com/infitis-studio/My-Fancy-Fences/releases/download/{tag}";
-            var assets = new[]
+            var releaseAssets = latestRelease.Release.Assets
+                .Where(asset => !string.IsNullOrWhiteSpace(asset.Name) &&
+                                !string.IsNullOrWhiteSpace(asset.BrowserDownloadUrl))
+                .Select(asset => new UpdateAsset(
+                    asset.Id,
+                    asset.Name,
+                    asset.BrowserDownloadUrl,
+                    asset.Size))
+                .ToList();
+            var assets = releaseAssets.Count > 0
+                ? releaseAssets
+                : new List<UpdateAsset>
             {
                 CreateAsset(tag, "REQUIRES-NET10", downloadBase),
                 CreateAsset(tag, "WITH-NET10", downloadBase)
             };
 
-            if (!Version.TryParse(tag.Trim().TrimStart('v', 'V'), out var latestVersion))
-                return new UpdateCheckResult(false, tag, null, releaseUrl, false, assets);
-
             return new UpdateCheckResult(
                 true,
                 tag,
-                latestVersion,
+                latestRelease.Version,
                 releaseUrl,
-                latestVersion > CurrentVersion,
+                latestRelease.Version > CurrentVersion,
                 assets);
         }
         catch
@@ -117,12 +132,14 @@ public static class UpdateService
         return Version.TryParse(normalized, out version!);
     }
 
+    private static Version ParseVersionOrDefault(string? value) =>
+        TryParseVersion(value, out var version)
+            ? version
+            : new Version(0, 0, 0);
+
     private static HttpClient CreateClient()
     {
-        var client = new HttpClient(new HttpClientHandler
-        {
-            AllowAutoRedirect = false
-        })
+        var client = new HttpClient
         {
             Timeout = TimeSpan.FromSeconds(10)
         };
@@ -140,3 +157,33 @@ public sealed record UpdateCheckResult(
     IReadOnlyList<UpdateAsset> Assets);
 
 public sealed record UpdateAsset(long Id, string Name, string DownloadUrl, long Size);
+
+internal sealed class GitHubRelease
+{
+    [JsonPropertyName("tag_name")]
+    public string TagName { get; set; } = string.Empty;
+
+    [JsonPropertyName("html_url")]
+    public string? HtmlUrl { get; set; }
+
+    [JsonPropertyName("draft")]
+    public bool Draft { get; set; }
+
+    [JsonPropertyName("assets")]
+    public List<GitHubReleaseAsset> Assets { get; set; } = [];
+}
+
+internal sealed class GitHubReleaseAsset
+{
+    [JsonPropertyName("id")]
+    public long Id { get; set; }
+
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = string.Empty;
+
+    [JsonPropertyName("browser_download_url")]
+    public string BrowserDownloadUrl { get; set; } = string.Empty;
+
+    [JsonPropertyName("size")]
+    public long Size { get; set; }
+}
