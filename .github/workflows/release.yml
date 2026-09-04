@@ -24,6 +24,8 @@ jobs:
       - name: Publish single-file application with .NET 10
         shell: pwsh
         run: |
+          $releaseVersion = "${{ github.ref_name }}".TrimStart("v", "V")
+          $assemblyVersion = "$releaseVersion.0"
           dotnet publish "My Fancy Fences/My Fancy Fences.csproj" `
             --configuration Release `
             --runtime win-x64 `
@@ -33,7 +35,11 @@ jobs:
             -p:IncludeNativeLibrariesForSelfExtract=true `
             -p:EnableCompressionInSingleFile=true `
             -p:DebugType=None `
-            -p:DebugSymbols=false
+            -p:DebugSymbols=false `
+            -p:Version=$releaseVersion `
+            -p:AssemblyVersion=$assemblyVersion `
+            -p:FileVersion=$assemblyVersion `
+            -p:InformationalVersion=$releaseVersion
           Move-Item `
             "publish/with-net10/My Fancy Fences.exe" `
             "My-Fancy-Fences-${{ github.ref_name }}-WITH-NET10-win-x64.exe"
@@ -41,6 +47,8 @@ jobs:
       - name: Publish single-file application requiring .NET 10
         shell: pwsh
         run: |
+          $releaseVersion = "${{ github.ref_name }}".TrimStart("v", "V")
+          $assemblyVersion = "$releaseVersion.0"
           dotnet publish "My Fancy Fences/My Fancy Fences.csproj" `
             --configuration Release `
             --runtime win-x64 `
@@ -48,7 +56,11 @@ jobs:
             --output "publish/requires-net10" `
             -p:PublishSingleFile=true `
             -p:DebugType=None `
-            -p:DebugSymbols=false
+            -p:DebugSymbols=false `
+            -p:Version=$releaseVersion `
+            -p:AssemblyVersion=$assemblyVersion `
+            -p:FileVersion=$assemblyVersion `
+            -p:InformationalVersion=$releaseVersion
           Move-Item `
             "publish/requires-net10/My Fancy Fences.exe" `
             "My-Fancy-Fences-${{ github.ref_name }}-REQUIRES-NET10-win-x64.exe"
@@ -56,10 +68,16 @@ jobs:
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
+          make_latest: true
           body: |
-            My Fancy Fences 2.1 for Windows x64.
+            My Fancy Fences ${{ github.ref_name }} for Windows x64.
 
             Highlights:
+            - Improved wallpaper browser toolbar layout with source selection, inline tag chips, favorites, and sorting controls.
+            - Added favorite toggle inside wallpaper details.
+            - Improved wallpaper favorites view and empty-result handling.
+            - Added better localization coverage for wallpaper and management labels.
+            - Fixed the displayed installed version after automatic updates.
             - Expanded shared Appearance controls for background, header, and icon styling.
             - Improved management window spacing, dark controls, dropdowns, and sliders.
             - Added layout management improvements for independent panel arrangements.
