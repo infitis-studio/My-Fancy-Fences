@@ -6,8 +6,10 @@ using System.Net.Http.Headers;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
@@ -19,18 +21,30 @@ public partial class WallpaperDetailsWindow : Window
     private const int SpiSetDeskWallpaper = 0x0014;
     private const int SpifUpdateIniFile = 0x01;
     private const int SpifSendWinIniChange = 0x02;
+    private const int MonitorDefaultToNearest = 2;
+    private const int AbmGetTaskbarPos = 5;
+    private const int AbeBottom = 3;
+    private const uint SwpNoZOrder = 0x0004;
+    private const uint SwpNoActivate = 0x0010;
 
     private static readonly HttpClient HttpClient = CreateHttpClient();
     private static readonly string FavoritesFilePath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "My Fancy Fences",
         "wallpaper-favorites.json");
+    private static readonly string LiveWallpaperDirectory = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "My Fancy Fences",
+        "Wallpapers",
+        "Live");
     private readonly WallpaperCard _wallpaper;
     private readonly ObservableCollection<PropertyRow> _properties = [];
     private string? _fullImageUrl;
     private bool _isCustomMaximized;
     private bool _isResizing;
+    private bool _isTitleBarDragPending;
     private Rect _restoreBounds;
+    private Point _titleBarDragStartPosition;
     private Point _resizeStartScreenPosition;
     private double _resizeStartWidth;
     private double _resizeStartHeight;
@@ -39,6 +53,7 @@ public partial class WallpaperDetailsWindow : Window
     {
         InitializeComponent();
         Icon = AppIconProvider.Image;
+        StateChanged += Window_StateChanged;
         ApplyInitialWindowSize();
 
         _wallpaper = wallpaper;
@@ -77,10 +92,11 @@ public partial class WallpaperDetailsWindow : Window
 
     private void UpdateWindowChrome()
     {
-        OuterWindowBorder.CornerRadius = _isCustomMaximized ? new CornerRadius(0) : new CornerRadius(13);
-        TitleBarBorder.CornerRadius = _isCustomMaximized ? new CornerRadius(0) : new CornerRadius(12, 12, 0, 0);
-        FooterBorder.CornerRadius = _isCustomMaximized ? new CornerRadius(0) : new CornerRadius(0, 0, 12, 12);
-        ResizeGrip.Visibility = _isCustomMaximized ? Visibility.Collapsed : Visibility.Visible;
+        var isMaximized = _isCustomMaximized || WindowState == WindowState.Maximized;
+        OuterWindowBorder.CornerRadius = isMaximized ? new CornerRadius(0) : new CornerRadius(13);
+        TitleBarBorder.CornerRadius = isMaximized ? new CornerRadius(0) : new CornerRadius(12, 12, 0, 0);
+        FooterBorder.CornerRadius = isMaximized ? new CornerRadius(0) : new CornerRadius(0, 0, 12, 12);
+        ResizeGrip.Visibility = isMaximized ? Visibility.Collapsed : Visibility.Visible;
         ApplyRoundedWindowClip();
     }
 
@@ -95,7 +111,7 @@ public partial class WallpaperDetailsWindow : Window
 
     private static HttpClient CreateHttpClient()
     {
-        var client = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+        var client = new HttpClient { Timeout = TimeSpan.FromMinutes(3) };
         client.DefaultRequestHeaders.UserAgent.Add(
             new ProductInfoHeaderValue("MyFancyFences", "1.0"));
         return client;
@@ -258,6 +274,214 @@ public partial class WallpaperDetailsWindow : Window
         return targetPath;
     }
 
+    private async Task<Uri?> PrepareLiveWallpaperVideoAsync()
+    {
+        if (!_wallpaper.Id.StartsWith("moewalls:", StringComparison.OrdinalIgnoreCase))
+            return TryCreateAbsoluteUri(_wallpaper.VideoPreviewUrl);
+
+        StatusText.Text = LocalizationService.T("Pobieranie tapety wideo w najwyższej jakości...");
+
+        var highQualityUri = await ResolveMoeWallsHighQualityVideoAsync();
+        if (highQualityUri is not null)
+        {
+            var localVideoPath = await DownloadLiveWallpaperVideoAsync(highQualityUri);
+            if (!string.IsNullOrWhiteSpace(localVideoPath))
+                return new Uri(localVideoPath);
+        }
+
+        return TryCreateAbsoluteUri(_wallpaper.VideoPreviewUrl);
+    }
+
+    private async Task<Uri?> ResolveMoeWallsHighQualityVideoAsync()
+    {
+        var downloadUri = CreateMoeWallsDownloadUri(_wallpaper.PageUrl, _wallpaper.ThumbnailUrl);
+        if (downloadUri is not null)
+            return downloadUri;
+
+        if (string.IsNullOrWhiteSpace(_wallpaper.PageUrl))
+            return null;
+
+        try
+        {
+            using var response = await HttpClient.GetAsync(_wallpaper.PageUrl);
+            response.EnsureSuccessStatusCode();
+            var html = await response.Content.ReadAsStringAsync();
+
+            var fourKDownloadMatch = Regex.Match(
+                html,
+                "href\\s*=\\s*[\"']?(?<href>/dl/4k/\\d+/?)[\"'\\s>]",
+                RegexOptions.IgnoreCase);
+            if (fourKDownloadMatch.Success)
+                return new Uri(NormalizeMoeWallsUrl(fourKDownloadMatch.Groups["href"].Value));
+
+            var sourceMatches = Regex.Matches(
+                html,
+                "(?:contentUrl|src|href|content)\\s*[=:]\\s*[\"'](?<url>[^\"']+\\.(?:mp4|webm)(?:\\?[^\"']*)?)[\"']",
+                RegexOptions.IgnoreCase);
+            return sourceMatches
+                .Select(match => NormalizeMoeWallsUrl(match.Groups["url"].Value))
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Select(value => new Uri(value))
+                .OrderByDescending(uri => ScoreVideoQuality(uri.ToString()))
+                .FirstOrDefault();
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static Uri? CreateMoeWallsDownloadUri(string pageUrl, string thumbnailUrl)
+    {
+        var mediaId = ExtractMoeWallsMediaId(thumbnailUrl);
+        if (string.IsNullOrWhiteSpace(mediaId))
+            mediaId = ExtractMoeWallsMediaId(pageUrl);
+
+        return string.IsNullOrWhiteSpace(mediaId)
+            ? null
+            : new Uri($"https://motionbgs.com/dl/4k/{mediaId}/");
+    }
+
+    private async Task<string?> DownloadLiveWallpaperVideoAsync(Uri videoUri)
+    {
+        Directory.CreateDirectory(LiveWallpaperDirectory);
+
+        using var response = await HttpClient.GetAsync(videoUri, HttpCompletionOption.ResponseHeadersRead);
+        response.EnsureSuccessStatusCode();
+
+        var fileName = GetResponseFileName(response) ??
+                       CreateLiveWallpaperFileName(videoUri);
+        fileName = SanitizeFileName(fileName);
+        if (!fileName.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase) &&
+            !fileName.EndsWith(".webm", StringComparison.OrdinalIgnoreCase))
+        {
+            fileName = $"{Path.GetFileNameWithoutExtension(fileName)}.mp4";
+        }
+
+        var targetPath = Path.Combine(LiveWallpaperDirectory, fileName);
+        var expectedSize = response.Content.Headers.ContentLength ?? 0;
+        if (File.Exists(targetPath))
+        {
+            var existing = new FileInfo(targetPath);
+            if (existing.Length > 1024 * 1024 &&
+                (expectedSize <= 0 || existing.Length == expectedSize))
+            {
+                return targetPath;
+            }
+        }
+
+        var temporaryPath = $"{targetPath}.{Guid.NewGuid():N}.download";
+        try
+        {
+            await using var source = await response.Content.ReadAsStreamAsync();
+            await using (var target = File.Create(temporaryPath))
+                await source.CopyToAsync(target);
+
+            var temporaryFile = new FileInfo(temporaryPath);
+            if (!temporaryFile.Exists ||
+                temporaryFile.Length < 1024 * 1024 ||
+                (expectedSize > 0 && temporaryFile.Length != expectedSize))
+            {
+                throw new InvalidDataException(LocalizationService.T("Pobrany plik wideo jest niekompletny."));
+            }
+
+            File.Move(temporaryPath, targetPath, overwrite: true);
+            return targetPath;
+        }
+        finally
+        {
+            if (File.Exists(temporaryPath))
+                File.Delete(temporaryPath);
+        }
+    }
+
+    private static Uri? TryCreateAbsoluteUri(string? value) =>
+        Uri.TryCreate(value, UriKind.Absolute, out var uri)
+            ? uri
+            : null;
+
+    private static string? GetResponseFileName(HttpResponseMessage response)
+    {
+        var fileName = response.Content.Headers.ContentDisposition?.FileNameStar ??
+                       response.Content.Headers.ContentDisposition?.FileName;
+        return string.IsNullOrWhiteSpace(fileName)
+            ? null
+            : fileName.Trim('"');
+    }
+
+    private string CreateLiveWallpaperFileName(Uri videoUri)
+    {
+        var fromUri = Path.GetFileName(videoUri.AbsolutePath);
+        if (!string.IsNullOrWhiteSpace(fromUri) &&
+            Path.HasExtension(fromUri))
+        {
+            return fromUri;
+        }
+
+        var slug = Uri.TryCreate(_wallpaper.PageUrl, UriKind.Absolute, out var pageUri)
+            ? pageUri.Segments.LastOrDefault()?.Trim('/')
+            : null;
+        if (string.IsNullOrWhiteSpace(slug))
+            slug = _wallpaper.Id.Replace("moewalls:", string.Empty, StringComparison.OrdinalIgnoreCase);
+
+        return $"{slug}.mp4";
+    }
+
+    private static string SanitizeFileName(string fileName)
+    {
+        foreach (var invalidCharacter in Path.GetInvalidFileNameChars())
+            fileName = fileName.Replace(invalidCharacter, '-');
+
+        return string.IsNullOrWhiteSpace(fileName)
+            ? $"live-wallpaper-{Guid.NewGuid():N}.mp4"
+            : fileName;
+    }
+
+    private static string? ExtractMoeWallsMediaId(string value)
+    {
+        var match = Regex.Match(value, @"/media/(?<id>\d+)/|/dl/(?:4k|hd)/(?<id>\d+)/?", RegexOptions.IgnoreCase);
+        return match.Success
+            ? match.Groups["id"].Value
+            : null;
+    }
+
+    private static string NormalizeMoeWallsUrl(string value)
+    {
+        var normalized = value.Trim().Trim('"', '\'');
+        if (string.IsNullOrWhiteSpace(normalized))
+            return string.Empty;
+
+        if (normalized.StartsWith("//", StringComparison.Ordinal))
+            return $"https:{normalized}";
+        if (normalized.StartsWith("/", StringComparison.Ordinal))
+            return $"https://motionbgs.com{normalized}";
+        if (!normalized.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+            return $"https://motionbgs.com/{normalized.TrimStart('/')}";
+
+        return normalized;
+    }
+
+    private static int ScoreVideoQuality(string value)
+    {
+        var score = 0;
+        var match = Regex.Match(value, @"(?<width>\d{3,5})x(?<height>\d{3,5})", RegexOptions.IgnoreCase);
+        if (match.Success &&
+            int.TryParse(match.Groups["width"].Value, out var width) &&
+            int.TryParse(match.Groups["height"].Value, out var height))
+        {
+            score += width * height;
+        }
+
+        if (value.Contains("/dl/4k/", StringComparison.OrdinalIgnoreCase) ||
+            value.Contains("3840x2160", StringComparison.OrdinalIgnoreCase) ||
+            value.Contains("4k", StringComparison.OrdinalIgnoreCase))
+        {
+            score += 10_000_000;
+        }
+
+        return score;
+    }
+
     private static bool IsValidImageFile(string path)
     {
         try
@@ -383,9 +607,15 @@ public partial class WallpaperDetailsWindow : Window
     {
         try
         {
-            if (!string.IsNullOrWhiteSpace(_wallpaper.VideoPreviewUrl) &&
-                Uri.TryCreate(_wallpaper.VideoPreviewUrl, UriKind.Absolute, out var liveWallpaperUri))
+            if (!string.IsNullOrWhiteSpace(_wallpaper.VideoPreviewUrl))
             {
+                var liveWallpaperUri = await PrepareLiveWallpaperVideoAsync();
+                if (liveWallpaperUri is null)
+                {
+                    StatusText.Text = LocalizationService.T("Nie udało się pobrać tapety.");
+                    return;
+                }
+
                 StatusText.Text = await LiveWallpaperService.TrySetAsync(liveWallpaperUri)
                     ? LocalizationService.T("Ustawiono ruchomą tapetę.")
                     : LocalizationService.T("Nie udało się ustawić ruchomej tapety.");
@@ -471,41 +701,271 @@ public partial class WallpaperDetailsWindow : Window
 
     private void MaximizeButton_Click(object sender, RoutedEventArgs e)
     {
-        if (_isCustomMaximized)
-        {
-            Left = _restoreBounds.Left;
-            Top = _restoreBounds.Top;
-            Width = _restoreBounds.Width;
-            Height = _restoreBounds.Height;
-            _isCustomMaximized = false;
-        }
+        if (_isCustomMaximized || WindowState == WindowState.Maximized)
+            RestoreFromCustomMaximized();
         else
-        {
-            _restoreBounds = new Rect(Left, Top, Width, Height);
-            var workArea = SystemParameters.WorkArea;
-            Left = workArea.Left;
-            Top = workArea.Top;
-            Width = workArea.Width;
-            Height = workArea.Height;
-            _isCustomMaximized = true;
-        }
-
-        MaximizeIcon.Kind = _isCustomMaximized
-            ? MahApps.Metro.IconPacks.PackIconLucideKind.Copy
-            : MahApps.Metro.IconPacks.PackIconLucideKind.Square;
-        UpdateWindowChrome();
+            MaximizeToCurrentMonitorWorkArea();
     }
 
     private void TitleBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        if (!_isCustomMaximized && e.ButtonState == MouseButtonState.Pressed)
+        if (e.ButtonState != MouseButtonState.Pressed)
+            return;
+
+        if (_isCustomMaximized || WindowState == WindowState.Maximized)
+        {
+            _isTitleBarDragPending = true;
+            _titleBarDragStartPosition = e.GetPosition(this);
+            TitleBarBorder.CaptureMouse();
+            e.Handled = true;
+            return;
+        }
+
+        TryDragMove();
+    }
+
+    private void TitleBar_MouseMove(object sender, MouseEventArgs e)
+    {
+        if (!_isTitleBarDragPending ||
+            e.LeftButton != MouseButtonState.Pressed)
+        {
+            return;
+        }
+
+        var currentPosition = e.GetPosition(this);
+        if (Math.Abs(currentPosition.X - _titleBarDragStartPosition.X) < 4 &&
+            Math.Abs(currentPosition.Y - _titleBarDragStartPosition.Y) < 4)
+        {
+            return;
+        }
+
+        _isTitleBarDragPending = false;
+        TitleBarBorder.ReleaseMouseCapture();
+        RestoreFromCustomMaximizedForDrag(currentPosition);
+        DragMove();
+    }
+
+    private void TitleBar_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (!_isTitleBarDragPending)
+            return;
+
+        _isTitleBarDragPending = false;
+        TitleBarBorder.ReleaseMouseCapture();
+        e.Handled = true;
+    }
+
+    private void RestoreFromCustomMaximizedForDrag(Point mousePosition)
+    {
+        if (_restoreBounds.Width <= 0 || _restoreBounds.Height <= 0)
+        {
+            var workArea = GetCurrentMonitorWorkArea();
+            _restoreBounds = new Rect(
+                workArea.Left,
+                workArea.Top,
+                Math.Max(MinWidth, workArea.Width * 0.72),
+                Math.Max(MinHeight, workArea.Height * 0.72));
+        }
+
+        var screenPoint = PointToScreen(mousePosition);
+        var horizontalRatio = ActualWidth <= 0
+            ? 0.5
+            : Math.Clamp(mousePosition.X / ActualWidth, 0.08, 0.92);
+
+        WindowState = WindowState.Normal;
+        Width = _restoreBounds.Width;
+        Height = _restoreBounds.Height;
+        Left = screenPoint.X - Width * horizontalRatio;
+        Top = screenPoint.Y - Math.Min(mousePosition.Y, 28);
+        _isCustomMaximized = false;
+        MaximizeIcon.Kind = MahApps.Metro.IconPacks.PackIconLucideKind.Square;
+        UpdateWindowChrome();
+    }
+
+    private void MaximizeToCurrentMonitorWorkArea()
+    {
+        if (WindowState != WindowState.Normal)
+            WindowState = WindowState.Normal;
+
+        _restoreBounds = new Rect(
+            Left,
+            Top,
+            Math.Max(MinWidth, ActualWidth > 0 ? ActualWidth : Width),
+            Math.Max(MinHeight, ActualHeight > 0 ? ActualHeight : Height));
+
+        SetWindowToCurrentMonitorSafeArea();
+        _isCustomMaximized = true;
+        MaximizeIcon.Kind = MahApps.Metro.IconPacks.PackIconLucideKind.Copy;
+        UpdateWindowChrome();
+    }
+
+    private void RestoreFromCustomMaximized()
+    {
+        if (WindowState != WindowState.Normal)
+            WindowState = WindowState.Normal;
+
+        if (_restoreBounds.Width <= 0 || _restoreBounds.Height <= 0)
+        {
+            var workArea = GetCurrentMonitorWorkArea();
+            _restoreBounds = new Rect(
+                workArea.Left + workArea.Width * 0.075,
+                workArea.Top + workArea.Height * 0.075,
+                Math.Max(MinWidth, workArea.Width * 0.85),
+                Math.Max(MinHeight, workArea.Height * 0.85));
+        }
+
+        Left = _restoreBounds.Left;
+        Top = _restoreBounds.Top;
+        Width = _restoreBounds.Width;
+        Height = _restoreBounds.Height;
+        _isCustomMaximized = false;
+        MaximizeIcon.Kind = MahApps.Metro.IconPacks.PackIconLucideKind.Square;
+        UpdateWindowChrome();
+    }
+
+    private Rect GetCurrentMonitorWorkArea()
+    {
+        var handle = new WindowInteropHelper(this).Handle;
+        if (handle != IntPtr.Zero)
+        {
+            var monitor = MonitorFromWindow(handle, MonitorDefaultToNearest);
+            if (monitor != IntPtr.Zero)
+            {
+                var info = new MonitorInfo { Size = Marshal.SizeOf<MonitorInfo>() };
+                if (GetMonitorInfo(monitor, ref info))
+                    return KeepAboveTaskbar(
+                        DeviceRectToDipRect(info.Work),
+                        DeviceRectToDipRect(info.Monitor));
+            }
+        }
+
+        return KeepAboveTaskbar(
+            SystemParameters.WorkArea,
+            new Rect(0, 0, SystemParameters.PrimaryScreenWidth, SystemParameters.PrimaryScreenHeight));
+    }
+
+    private void SetWindowToCurrentMonitorSafeArea()
+    {
+        var handle = new WindowInteropHelper(this).Handle;
+        if (handle == IntPtr.Zero)
+            return;
+
+        var monitor = MonitorFromWindow(handle, MonitorDefaultToNearest);
+        if (monitor == IntPtr.Zero)
+            return;
+
+        var info = new MonitorInfo { Size = Marshal.SizeOf<MonitorInfo>() };
+        if (!GetMonitorInfo(monitor, ref info))
+            return;
+
+        var safe = GetSafeAreaDeviceRect(info);
+        SetWindowPos(
+            handle,
+            IntPtr.Zero,
+            safe.Left,
+            safe.Top,
+            Math.Max(1, safe.Width),
+            Math.Max(1, safe.Height),
+            SwpNoZOrder | SwpNoActivate);
+    }
+
+    private NativeRect GetSafeAreaDeviceRect(MonitorInfo info)
+    {
+        var safe = info.Monitor;
+        var workBottomGap = Math.Max(0, info.Monitor.Bottom - info.Work.Bottom);
+        var taskbarHeight = workBottomGap;
+
+        var data = new AppBarData { Size = Marshal.SizeOf<AppBarData>() };
+        if (SHAppBarMessage(AbmGetTaskbarPos, ref data) != IntPtr.Zero && data.Edge == AbeBottom)
+        {
+            var overlapsHorizontally = info.Monitor.Left < data.Rect.Right && info.Monitor.Right > data.Rect.Left;
+            if (overlapsHorizontally)
+                taskbarHeight = Math.Max(taskbarHeight, data.Rect.Height);
+        }
+
+        if (taskbarHeight < 24 || taskbarHeight > 240)
+            taskbarHeight = GetFallbackTaskbarHeightDevice();
+
+        safe.Bottom = Math.Max(safe.Top + 1, safe.Bottom - taskbarHeight);
+        return safe;
+    }
+
+    private int GetFallbackTaskbarHeightDevice()
+    {
+        var source = PresentationSource.FromVisual(this);
+        var scaleY = source?.CompositionTarget?.TransformToDevice.M22 ?? 1;
+        return Math.Max(48, (int)Math.Round(56 * scaleY));
+    }
+
+    private Rect DeviceRectToDipRect(NativeRect rect)
+    {
+        var source = PresentationSource.FromVisual(this);
+        var transform = source?.CompositionTarget?.TransformFromDevice ?? Matrix.Identity;
+        var topLeft = transform.Transform(new Point(rect.Left, rect.Top));
+        var bottomRight = transform.Transform(new Point(rect.Right, rect.Bottom));
+        return new Rect(topLeft, bottomRight);
+    }
+
+    private Rect KeepAboveTaskbar(Rect workArea, Rect monitorArea)
+    {
+        var bottomTaskbarHeight = Math.Max(0, monitorArea.Bottom - workArea.Bottom);
+        var data = new AppBarData { Size = Marshal.SizeOf<AppBarData>() };
+        if (SHAppBarMessage(AbmGetTaskbarPos, ref data) != IntPtr.Zero && data.Edge == AbeBottom)
+        {
+            var taskbar = DeviceRectToDipRect(data.Rect);
+            var overlapsHorizontally = monitorArea.Left < taskbar.Right && monitorArea.Right > taskbar.Left;
+            if (overlapsHorizontally)
+                bottomTaskbarHeight = Math.Max(bottomTaskbarHeight, taskbar.Height);
+        }
+
+        if (bottomTaskbarHeight < 24)
+            bottomTaskbarHeight = 56;
+        else if (bottomTaskbarHeight > 160)
+            bottomTaskbarHeight = 56;
+
+        var safeHeight = Math.Max(MinHeight, monitorArea.Height - bottomTaskbarHeight);
+
+        return new Rect(
+            monitorArea.Left,
+            monitorArea.Top,
+            monitorArea.Width,
+            safeHeight);
+    }
+
+    private void TryDragMove()
+    {
+        try
+        {
             DragMove();
+        }
+        catch (InvalidOperationException)
+        {
+        }
+    }
+
+    private void Window_StateChanged(object? sender, EventArgs e)
+    {
+        if (WindowState != WindowState.Maximized)
+            return;
+
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            if (WindowState != WindowState.Maximized)
+                return;
+
+            WindowState = WindowState.Normal;
+            MaximizeToCurrentMonitorWorkArea();
+        }));
     }
 
     private void ResizeGrip_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        if (_isCustomMaximized || e.ButtonState != MouseButtonState.Pressed)
+        if (_isCustomMaximized ||
+            WindowState == WindowState.Maximized ||
+            e.ButtonState != MouseButtonState.Pressed)
+        {
             return;
+        }
 
         _isResizing = true;
         _resizeStartScreenPosition = PointToScreen(e.GetPosition(this));
@@ -536,12 +996,63 @@ public partial class WallpaperDetailsWindow : Window
         e.Handled = true;
     }
 
+    [DllImport("user32.dll")]
+    private static extern IntPtr MonitorFromWindow(IntPtr hwnd, int dwFlags);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool GetMonitorInfo(IntPtr hMonitor, ref MonitorInfo lpmi);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool SetWindowPos(
+        IntPtr hWnd,
+        IntPtr hWndInsertAfter,
+        int x,
+        int y,
+        int cx,
+        int cy,
+        uint flags);
+
+    [DllImport("shell32.dll")]
+    private static extern IntPtr SHAppBarMessage(int dwMessage, ref AppBarData pData);
+
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern bool SystemParametersInfo(
         int action,
         int param,
         string value,
         int update);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MonitorInfo
+    {
+        public int Size;
+        public NativeRect Monitor;
+        public NativeRect Work;
+        public uint Flags;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeRect
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+
+        public int Width => Right - Left;
+        public int Height => Bottom - Top;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct AppBarData
+    {
+        public int Size;
+        public IntPtr Window;
+        public uint CallbackMessage;
+        public uint Edge;
+        public NativeRect Rect;
+        public int Param;
+    }
 
     private sealed record PropertyRow(string Name, string Value);
 

@@ -86,8 +86,8 @@
         </Style>
 
         <Style x:Key="WindowCaptionButtonStyle" TargetType="Button">
-            <Setter Property="Width" Value="36"/>
-            <Setter Property="Height" Value="32"/>
+            <Setter Property="Width" Value="32"/>
+            <Setter Property="Height" Value="30"/>
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="Foreground" Value="#FFDDE2EA"/>
@@ -189,7 +189,9 @@
 
             <Border x:Name="TitleBarBorder"
                     CornerRadius="12,12,0,0"
-                    MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
+                    MouseLeftButtonDown="TitleBar_MouseLeftButtonDown"
+                    MouseLeftButtonUp="TitleBar_MouseLeftButtonUp"
+                    MouseMove="TitleBar_MouseMove">
                 <Border.Background>
                     <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
                         <GradientStop Color="#F02A1F27" Offset="0"/>
@@ -214,19 +216,20 @@
                         <Button Style="{StaticResource WindowCaptionButtonStyle}"
                                 ToolTip="Minimalizuj"
                                 Click="MinimizeButton_Click">
-                            <iconPacks:PackIconLucide Kind="Minus" Width="16" Height="16"/>
+                            <iconPacks:PackIconLucide Kind="Minus" Width="13" Height="13"/>
                         </Button>
                         <Button Style="{StaticResource WindowCaptionButtonStyle}"
                                 ToolTip="Pełny ekran"
                                 Click="MaximizeButton_Click">
                             <iconPacks:PackIconLucide x:Name="MaximizeIcon"
                                                       Kind="Square"
-                                                      Width="14"
-                                                      Height="14"/>
+                                                      Width="12"
+                                                      Height="12"/>
                         </Button>
                         <Button Content="×"
                                 Style="{StaticResource WindowCloseButtonStyle}"
-                                FontSize="20"
+                                FontSize="21"
+                                Padding="0,-1,0,0"
                                 Click="CloseButton_Click"/>
                     </StackPanel>
                 </Grid>

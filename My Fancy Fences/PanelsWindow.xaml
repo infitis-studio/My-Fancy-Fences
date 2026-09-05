@@ -44,7 +44,7 @@
             </Setter>
         </Style>
 
-        <Style x:Key="WindowCloseButtonStyle" TargetType="Button">
+        <Style x:Key="WindowCaptionButtonStyle" TargetType="Button">
             <Setter Property="Width" Value="34"/>
             <Setter Property="MinWidth" Value="34"/>
             <Setter Property="Height" Value="32"/>
@@ -53,6 +53,25 @@
             <Setter Property="HorizontalContentAlignment" Value="Center"/>
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Foreground" Value="#FFE7E2E4"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="ButtonBorder" CornerRadius="7" Background="{TemplateBinding Background}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ButtonBorder" Property="Background" Value="#22FFFFFF"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="WindowCloseButtonStyle"
+               TargetType="Button"
+               BasedOn="{StaticResource WindowCaptionButtonStyle}">
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
@@ -481,7 +500,11 @@
 
     </Window.Resources>
 
-    <Border BorderBrush="#FF3A3438" BorderThickness="1" CornerRadius="12" ClipToBounds="True">
+    <Border x:Name="OuterWindowBorder"
+            BorderBrush="#FF3A3438"
+            BorderThickness="1"
+            CornerRadius="12"
+            ClipToBounds="True">
         <Border.Background>
             <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
                 <GradientStop Color="#FF191719" Offset="0"/>
@@ -496,7 +519,9 @@
                 <RowDefinition Height="58"/>
             </Grid.RowDefinitions>
 
-            <Border CornerRadius="11,11,0,0" MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
+            <Border x:Name="TitleBarBorder"
+                    CornerRadius="11,11,0,0"
+                    MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
                 <Border.Background>
                     <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
                         <GradientStop Color="#FF2B2025" Offset="0"/>
@@ -511,12 +536,30 @@
                         <TextBlock Text="Zarządzanie" FontSize="14" FontWeight="SemiBold"
                                    VerticalAlignment="Center"/>
                     </StackPanel>
-                    <Button Content="×" Style="{StaticResource WindowCloseButtonStyle}"
-                            HorizontalAlignment="Right"
-                            VerticalAlignment="Center"
-                            Padding="0,-2,0,0"
-                            FontSize="20"
-                            Click="CloseButton_Click"/>
+                    <StackPanel Orientation="Horizontal"
+                                HorizontalAlignment="Right"
+                                VerticalAlignment="Center">
+                        <Button Style="{StaticResource WindowCaptionButtonStyle}"
+                                ToolTip="Minimalizuj"
+                                Click="MinimizeButton_Click">
+                            <iconPacks:PackIconLucide Kind="Minus"
+                                                      Width="13"
+                                                      Height="13"/>
+                        </Button>
+                        <Button Style="{StaticResource WindowCaptionButtonStyle}"
+                                ToolTip="Pełny ekran"
+                                Click="MaximizeButton_Click">
+                            <iconPacks:PackIconLucide x:Name="ManagementMaximizeIcon"
+                                                      Kind="Square"
+                                                      Width="12"
+                                                      Height="12"/>
+                        </Button>
+                        <Button Content="×"
+                                Style="{StaticResource WindowCloseButtonStyle}"
+                                FontSize="21"
+                                Padding="0,-1,0,0"
+                                Click="CloseButton_Click"/>
+                    </StackPanel>
                 </Grid>
             </Border>
 
@@ -1529,8 +1572,13 @@
                 </Grid>
             </Grid>
 
-            <Border Grid.Row="2" Background="#FF1C1B1E" BorderBrush="#FF343035"
-                    BorderThickness="0,1,0,0" Padding="8,0,12,0" CornerRadius="0,0,11,11">
+            <Border x:Name="FooterBorder"
+                    Grid.Row="2"
+                    Background="#FF1C1B1E"
+                    BorderBrush="#FF343035"
+                    BorderThickness="0,1,0,0"
+                    Padding="8,0,12,0"
+                    CornerRadius="0,0,11,11">
                 <Grid>
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" VerticalAlignment="Center">
                         <Button Width="160" MinWidth="0" Height="34" Padding="0"

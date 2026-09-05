@@ -1,9 +1,11 @@
 ﻿using System.Diagnostics;
 using System.Globalization;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Interop;
 using System.Windows.Threading;
 using MahApps.Metro.IconPacks;
 using Microsoft.Win32;
@@ -14,6 +16,11 @@ public partial class PanelsWindow : Window
 {
     private const double InitialWidthRatio = 0.683;
     private const double InitialHeightRatio = 0.795;
+    private const int MonitorDefaultToNearest = 2;
+    private const int AbmGetTaskbarPos = 5;
+    private const int AbeBottom = 3;
+    private const uint SwpNoZOrder = 0x0004;
+    private const uint SwpNoActivate = 0x0010;
     private bool _hasCheckedForUpdates;
     private string? _latestReleaseUrl;
     private UpdateCheckResult? _latestUpdate;
@@ -38,7 +45,9 @@ public partial class PanelsWindow : Window
     private double _appearanceIconSize;
     private AppearanceState _committedAppearance = null!;
     private bool _suppressAppearanceEvents;
+    private bool _isCustomMaximized;
     private bool _isResizing;
+    private Rect _restoreBounds;
     private Point _resizeStartScreenPosition;
     private double _resizeStartWidth;
     private double _resizeStartHeight;
@@ -121,6 +130,7 @@ public partial class PanelsWindow : Window
         _committedAppearance = CreateAppearanceStateFromFields();
         InitializeComponent();
         Icon = AppIconProvider.Image;
+        StateChanged += Window_StateChanged;
         ApplyInitialWindowBounds();
         _panelsSmoothScrollTimer.Tick += PanelsSmoothScrollTimer_Tick;
         DoubleClickActivationCheckBox.IsChecked = useDoubleClickToOpen;
@@ -842,8 +852,49 @@ public partial class PanelsWindow : Window
 
     private void TitleBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        if (e.ButtonState == MouseButtonState.Pressed)
-            DragMove();
+        if (e.ButtonState != MouseButtonState.Pressed)
+            return;
+
+        if (_isCustomMaximized || WindowState == WindowState.Maximized)
+            RestoreFromMaximizedForDrag(e.GetPosition(this));
+
+        TryDragMove();
+    }
+
+    private void RestoreFromMaximizedForDrag(Point mousePosition)
+    {
+        if (_restoreBounds.Width <= 0 || _restoreBounds.Height <= 0)
+        {
+            var workArea = GetCurrentMonitorWorkArea();
+            _restoreBounds = new Rect(
+                workArea.Left,
+                workArea.Top,
+                Math.Max(MinWidth, workArea.Width * InitialWidthRatio),
+                Math.Max(MinHeight, workArea.Height * InitialHeightRatio));
+        }
+
+        var screenPoint = PointToScreen(mousePosition);
+        var horizontalRatio = ActualWidth <= 0
+            ? 0.5
+            : Math.Clamp(mousePosition.X / ActualWidth, 0.08, 0.92);
+
+        WindowState = WindowState.Normal;
+        Width = _restoreBounds.Width;
+        Height = _restoreBounds.Height;
+        Left = screenPoint.X - Width * horizontalRatio;
+        Top = screenPoint.Y - Math.Min(mousePosition.Y, 28);
+        _isCustomMaximized = false;
+        ManagementMaximizeIcon.Kind = PackIconLucideKind.Square;
+        UpdateWindowChrome();
+    }
+
+    private void UpdateWindowChrome()
+    {
+        var isMaximized = _isCustomMaximized || WindowState == WindowState.Maximized;
+        OuterWindowBorder.CornerRadius = isMaximized ? new CornerRadius(0) : new CornerRadius(12);
+        TitleBarBorder.CornerRadius = isMaximized ? new CornerRadius(0) : new CornerRadius(11, 11, 0, 0);
+        FooterBorder.CornerRadius = isMaximized ? new CornerRadius(0) : new CornerRadius(0, 0, 11, 11);
+        ResizeGrip.Visibility = isMaximized ? Visibility.Collapsed : Visibility.Visible;
     }
 
     private void PanelsScrollViewer_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
@@ -879,8 +930,12 @@ public partial class PanelsWindow : Window
 
     private void ResizeGrip_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        if (e.ButtonState != MouseButtonState.Pressed)
+        if (_isCustomMaximized ||
+            WindowState == WindowState.Maximized ||
+            e.ButtonState != MouseButtonState.Pressed)
+        {
             return;
+        }
 
         _isResizing = true;
         _resizeStartScreenPosition = PointToScreen(e.GetPosition(this));
@@ -911,6 +966,244 @@ public partial class PanelsWindow : Window
     }
 
     private void CloseButton_Click(object sender, RoutedEventArgs e) => Close();
+
+    private void MinimizeButton_Click(object sender, RoutedEventArgs e) =>
+        WindowState = WindowState.Minimized;
+
+    private void MaximizeButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_isCustomMaximized || WindowState == WindowState.Maximized)
+            RestoreFromCustomMaximized();
+        else
+            MaximizeToCurrentMonitorWorkArea();
+    }
+
+    private void MaximizeToCurrentMonitorWorkArea()
+    {
+        if (WindowState != WindowState.Normal)
+            WindowState = WindowState.Normal;
+
+        _restoreBounds = new Rect(
+            Left,
+            Top,
+            Math.Max(MinWidth, ActualWidth > 0 ? ActualWidth : Width),
+            Math.Max(MinHeight, ActualHeight > 0 ? ActualHeight : Height));
+
+        SetWindowToCurrentMonitorSafeArea();
+        _isCustomMaximized = true;
+        ManagementMaximizeIcon.Kind = PackIconLucideKind.Copy;
+        UpdateWindowChrome();
+    }
+
+    private void RestoreFromCustomMaximized()
+    {
+        if (WindowState != WindowState.Normal)
+            WindowState = WindowState.Normal;
+
+        if (_restoreBounds.Width <= 0 || _restoreBounds.Height <= 0)
+        {
+            var workArea = GetCurrentMonitorWorkArea();
+            _restoreBounds = new Rect(
+                workArea.Left + workArea.Width * 0.16,
+                workArea.Top + workArea.Height * 0.1,
+                Math.Max(MinWidth, workArea.Width * InitialWidthRatio),
+                Math.Max(MinHeight, workArea.Height * InitialHeightRatio));
+        }
+
+        Left = _restoreBounds.Left;
+        Top = _restoreBounds.Top;
+        Width = _restoreBounds.Width;
+        Height = _restoreBounds.Height;
+        _isCustomMaximized = false;
+        ManagementMaximizeIcon.Kind = PackIconLucideKind.Square;
+        UpdateWindowChrome();
+    }
+
+    private Rect GetCurrentMonitorWorkArea()
+    {
+        var handle = new WindowInteropHelper(this).Handle;
+        if (handle != IntPtr.Zero)
+        {
+            var monitor = MonitorFromWindow(handle, MonitorDefaultToNearest);
+            if (monitor != IntPtr.Zero)
+            {
+                var info = new MonitorInfo { Size = Marshal.SizeOf<MonitorInfo>() };
+                if (GetMonitorInfo(monitor, ref info))
+                    return KeepAboveTaskbar(
+                        DeviceRectToDipRect(info.Work),
+                        DeviceRectToDipRect(info.Monitor));
+            }
+        }
+
+        return KeepAboveTaskbar(
+            SystemParameters.WorkArea,
+            new Rect(0, 0, SystemParameters.PrimaryScreenWidth, SystemParameters.PrimaryScreenHeight));
+    }
+
+    private void SetWindowToCurrentMonitorSafeArea()
+    {
+        var handle = new WindowInteropHelper(this).Handle;
+        if (handle == IntPtr.Zero)
+            return;
+
+        var monitor = MonitorFromWindow(handle, MonitorDefaultToNearest);
+        if (monitor == IntPtr.Zero)
+            return;
+
+        var info = new MonitorInfo { Size = Marshal.SizeOf<MonitorInfo>() };
+        if (!GetMonitorInfo(monitor, ref info))
+            return;
+
+        var safe = GetSafeAreaDeviceRect(info);
+        SetWindowPos(
+            handle,
+            IntPtr.Zero,
+            safe.Left,
+            safe.Top,
+            Math.Max(1, safe.Width),
+            Math.Max(1, safe.Height),
+            SwpNoZOrder | SwpNoActivate);
+    }
+
+    private NativeRect GetSafeAreaDeviceRect(MonitorInfo info)
+    {
+        var safe = info.Monitor;
+        var workBottomGap = Math.Max(0, info.Monitor.Bottom - info.Work.Bottom);
+        var taskbarHeight = workBottomGap;
+
+        var data = new AppBarData { Size = Marshal.SizeOf<AppBarData>() };
+        if (SHAppBarMessage(AbmGetTaskbarPos, ref data) != IntPtr.Zero && data.Edge == AbeBottom)
+        {
+            var overlapsHorizontally = info.Monitor.Left < data.Rect.Right && info.Monitor.Right > data.Rect.Left;
+            if (overlapsHorizontally)
+                taskbarHeight = Math.Max(taskbarHeight, data.Rect.Height);
+        }
+
+        if (taskbarHeight < 24 || taskbarHeight > 240)
+            taskbarHeight = GetFallbackTaskbarHeightDevice();
+
+        safe.Bottom = Math.Max(safe.Top + 1, safe.Bottom - taskbarHeight);
+        return safe;
+    }
+
+    private int GetFallbackTaskbarHeightDevice()
+    {
+        var source = PresentationSource.FromVisual(this);
+        var scaleY = source?.CompositionTarget?.TransformToDevice.M22 ?? 1;
+        return Math.Max(48, (int)Math.Round(56 * scaleY));
+    }
+
+    private Rect DeviceRectToDipRect(NativeRect rect)
+    {
+        var source = PresentationSource.FromVisual(this);
+        var transform = source?.CompositionTarget?.TransformFromDevice ?? Matrix.Identity;
+        var topLeft = transform.Transform(new Point(rect.Left, rect.Top));
+        var bottomRight = transform.Transform(new Point(rect.Right, rect.Bottom));
+        return new Rect(topLeft, bottomRight);
+    }
+
+    private Rect KeepAboveTaskbar(Rect workArea, Rect monitorArea)
+    {
+        var bottomTaskbarHeight = Math.Max(0, monitorArea.Bottom - workArea.Bottom);
+        var data = new AppBarData { Size = Marshal.SizeOf<AppBarData>() };
+        if (SHAppBarMessage(AbmGetTaskbarPos, ref data) != IntPtr.Zero && data.Edge == AbeBottom)
+        {
+            var taskbar = DeviceRectToDipRect(data.Rect);
+            var overlapsHorizontally = monitorArea.Left < taskbar.Right && monitorArea.Right > taskbar.Left;
+            if (overlapsHorizontally)
+                bottomTaskbarHeight = Math.Max(bottomTaskbarHeight, taskbar.Height);
+        }
+
+        if (bottomTaskbarHeight < 24)
+            bottomTaskbarHeight = 56;
+        else if (bottomTaskbarHeight > 160)
+            bottomTaskbarHeight = 56;
+
+        var safeHeight = Math.Max(MinHeight, monitorArea.Height - bottomTaskbarHeight);
+
+        return new Rect(
+            monitorArea.Left,
+            monitorArea.Top,
+            monitorArea.Width,
+            safeHeight);
+    }
+
+    private void TryDragMove()
+    {
+        try
+        {
+            DragMove();
+        }
+        catch (InvalidOperationException)
+        {
+        }
+    }
+
+    private void Window_StateChanged(object? sender, EventArgs e)
+    {
+        if (WindowState != WindowState.Maximized)
+            return;
+
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            if (WindowState != WindowState.Maximized)
+                return;
+
+            WindowState = WindowState.Normal;
+            MaximizeToCurrentMonitorWorkArea();
+        }));
+    }
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr MonitorFromWindow(IntPtr hwnd, int dwFlags);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool GetMonitorInfo(IntPtr hMonitor, ref MonitorInfo lpmi);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool SetWindowPos(
+        IntPtr hWnd,
+        IntPtr hWndInsertAfter,
+        int x,
+        int y,
+        int cx,
+        int cy,
+        uint flags);
+
+    [DllImport("shell32.dll")]
+    private static extern IntPtr SHAppBarMessage(int dwMessage, ref AppBarData pData);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MonitorInfo
+    {
+        public int Size;
+        public NativeRect Monitor;
+        public NativeRect Work;
+        public uint Flags;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeRect
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+
+        public int Width => Right - Left;
+        public int Height => Bottom - Top;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct AppBarData
+    {
+        public int Size;
+        public IntPtr Window;
+        public uint CallbackMessage;
+        public uint Edge;
+        public NativeRect Rect;
+        public int Param;
+    }
 
     private void PanelVisibilityButton_Click(object sender, RoutedEventArgs e)
     {

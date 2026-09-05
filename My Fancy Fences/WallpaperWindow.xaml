@@ -730,11 +730,11 @@
                 <Grid Margin="15,10,15,11" Background="Transparent">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*" MinWidth="8"/>
                         <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*" MinWidth="8"/>
                         <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*" MinWidth="8"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
 
@@ -749,14 +749,34 @@
                               Style="{StaticResource WallpaperSourceComboBoxStyle}"
                               SelectionChanged="WallpaperSourceComboBox_SelectionChanged"
                               SelectedIndex="0">
-                        <ComboBoxItem x:Name="WallhavenSourceItem" Content="Wallhaven" Tag="wallhaven"/>
-                        <ComboBoxItem x:Name="MoeWallsSourceItem" Content="MoeWalls" Tag="moewalls"/>
+                        <ComboBoxItem x:Name="WallhavenSourceItem" Tag="wallhaven">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <iconPacks:PackIconLucide Kind="Image"
+                                                          Width="14"
+                                                          Height="14"
+                                                          Margin="0,0,8,0"
+                                                          Foreground="#FF62A8FF"/>
+                                <TextBlock Text="Wallhaven" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </ComboBoxItem>
+                        <ComboBoxItem x:Name="MoeWallsSourceItem" Tag="moewalls">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <iconPacks:PackIconLucide Kind="Clapperboard"
+                                                          Width="14"
+                                                          Height="14"
+                                                          Margin="0,0,8,0"
+                                                          Foreground="#FF5EE08A"/>
+                                <TextBlock Text="MoeWalls" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </ComboBoxItem>
                     </ComboBox>
 
                     <Grid x:Name="SearchBoxRoot"
                           Grid.Column="2"
                           Panel.ZIndex="50"
                           Width="380"
+                          MinWidth="250"
+                          MaxWidth="380"
                           Height="34"
                           HorizontalAlignment="Left"
                           VerticalAlignment="Center"
@@ -1160,8 +1180,51 @@
                                                           Stretch="UniformToFill"
                                                           Volume="0"
                                                           Visibility="Collapsed"
+                                                          Opacity="0"
+                                                          MediaOpened="WallpaperVideo_MediaOpened"
+                                                          MediaFailed="WallpaperVideo_MediaFailed"
                                                           MediaEnded="WallpaperVideo_MediaEnded"
                                                           Unloaded="WallpaperVideo_Unloaded"/>
+                                            <Border Width="42"
+                                                    Height="42"
+                                                    CornerRadius="12"
+                                                    Background="#CC16181E"
+                                                    HorizontalAlignment="Center"
+                                                    VerticalAlignment="Center">
+                                                <Border.Style>
+                                                    <Style TargetType="Border">
+                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsBusy}" Value="True">
+                                                                <Setter Property="Visibility" Value="Visible"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Border.Style>
+                                                <iconPacks:PackIconLucide Kind="LoaderCircle"
+                                                                          Width="22"
+                                                                          Height="22"
+                                                                          Foreground="#DDE7E2E4"
+                                                                          HorizontalAlignment="Center"
+                                                                          VerticalAlignment="Center"
+                                                                          RenderTransformOrigin="0.5,0.5">
+                                                    <iconPacks:PackIconLucide.RenderTransform>
+                                                        <RotateTransform/>
+                                                    </iconPacks:PackIconLucide.RenderTransform>
+                                                    <iconPacks:PackIconLucide.Triggers>
+                                                        <EventTrigger RoutedEvent="Loaded">
+                                                            <BeginStoryboard>
+                                                                <Storyboard RepeatBehavior="Forever">
+                                                                    <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(RotateTransform.Angle)"
+                                                                                     From="0"
+                                                                                     To="360"
+                                                                                     Duration="0:0:0.85"/>
+                                                                </Storyboard>
+                                                            </BeginStoryboard>
+                                                        </EventTrigger>
+                                                    </iconPacks:PackIconLucide.Triggers>
+                                                </iconPacks:PackIconLucide>
+                                            </Border>
                                             <Button Tag="{Binding}"
                                                     Style="{StaticResource FavoriteHeartButtonStyle}"
                                                     HorizontalAlignment="Right"

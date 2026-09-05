@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.IO;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Runtime.InteropServices;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -14,25 +15,38 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
+using System.Windows.Interop;
 using System.Windows.Threading;
 
 namespace My_Fancy_Fences;
 
 public partial class WallpaperWindow : Window
 {
-    private const int MaxCachedWallpapers = 144;
+    private const int MaxCachedWallpapers = 96;
     private const int MaxTags = 5;
+    private const int WallpaperAppendBatchSize = 3;
     private const double WallpaperCardPitch = 170;
     private const double VisibleTagsWidth = 145;
+    private const int MonitorDefaultToNearest = 2;
+    private const int AbmGetTaskbarPos = 5;
+    private const int AbeBottom = 3;
+    private const uint SwpNoZOrder = 0x0004;
+    private const uint SwpNoActivate = 0x0010;
     private static readonly HttpClient HttpClient = CreateHttpClient();
     private static readonly string FavoritesFilePath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "My Fancy Fences",
         "wallpaper-favorites.json");
+    private static WallpaperDetailsWindow? ActiveDetailsWindow;
     private readonly List<string> _tags = [];
     private readonly Dictionary<string, FavoriteWallpaper> _favoriteWallpapers =
         new(StringComparer.OrdinalIgnoreCase);
     private readonly ObservableCollection<WallpaperCard> _wallpapers = [];
+    private readonly Queue<WallpaperCard> _thumbnailQueue = new();
+    private readonly DispatcherTimer _thumbnailQueueTimer = new()
+    {
+        Interval = TimeSpan.FromMilliseconds(55)
+    };
     private string _sorting = "date_added";
     private string _moeWallsSorting = "latest";
     private bool _isLoaded;
@@ -44,6 +58,7 @@ public partial class WallpaperWindow : Window
     private bool _isFavoritesMode;
     private bool _suppressFilterEvents;
     private bool _hasHiddenTags;
+    private Button? _activePreviewButton;
     private int _currentPage;
     private Rect _restoreBounds;
     private Point _resizeStartScreenPosition;
@@ -71,6 +86,7 @@ public partial class WallpaperWindow : Window
         _isEmbedded = embedded;
         InitializeComponent();
         Icon = AppIconProvider.Image;
+        StateChanged += Window_StateChanged;
 
         var workArea = SystemParameters.WorkArea;
         Width = Math.Clamp(workArea.Width * 0.62, MinWidth, 1280);
@@ -88,6 +104,7 @@ public partial class WallpaperWindow : Window
         LoadFavorites();
         RefreshLocalizedText();
         SizeChanged += (_, _) => ApplyRoundedWindowClip();
+        _thumbnailQueueTimer.Tick += ThumbnailQueueTimer_Tick;
 
         if (_isEmbedded)
         {
@@ -130,8 +147,6 @@ public partial class WallpaperWindow : Window
         Title = LocalizationService.T("Tapety z Wallhaven");
         WindowTitleText.Text = LocalizationService.T("Tapety z Wallhaven");
         SearchPlaceholderText.Text = LocalizationService.T("Wpisz tagi...");
-        WallhavenSourceItem.Content = "Wallhaven";
-        MoeWallsSourceItem.Content = "MoeWalls";
 
         LatestSortButton.Content = LocalizationService.T("Latest");
         HotSortButton.Content = LocalizationService.T("Hot");
@@ -209,12 +224,7 @@ public partial class WallpaperWindow : Window
 
     private void UpdateWallpaperSourceSelectionText()
     {
-        var sourceName = WallpaperSourceComboBox.SelectedItem is ComboBoxItem item
-            ? item.Content?.ToString()
-            : "Wallhaven";
-
-        if (string.IsNullOrWhiteSpace(sourceName))
-            sourceName = "Wallhaven";
+        var sourceName = IsMoeWallsSelected ? "MoeWalls" : "Wallhaven";
 
         WallpaperSourceComboBox.Tag = $"{LocalizationService.T("Wybrane źródło")}: {sourceName}";
     }
@@ -312,10 +322,11 @@ public partial class WallpaperWindow : Window
         if (_isEmbedded)
             return;
 
-        OuterWindowBorder.CornerRadius = _isCustomMaximized ? new CornerRadius(0) : new CornerRadius(13);
-        TitleBarBorder.CornerRadius = _isCustomMaximized ? new CornerRadius(0) : new CornerRadius(12, 12, 0, 0);
-        SidebarBorder.CornerRadius = _isCustomMaximized ? new CornerRadius(0) : new CornerRadius(0, 0, 0, 12);
-        ResizeGrip.Visibility = _isCustomMaximized ? Visibility.Collapsed : Visibility.Visible;
+        var isMaximized = _isCustomMaximized || WindowState == WindowState.Maximized;
+        OuterWindowBorder.CornerRadius = isMaximized ? new CornerRadius(0) : new CornerRadius(13);
+        TitleBarBorder.CornerRadius = isMaximized ? new CornerRadius(0) : new CornerRadius(12, 12, 0, 0);
+        SidebarBorder.CornerRadius = isMaximized ? new CornerRadius(0) : new CornerRadius(0, 0, 0, 12);
+        ResizeGrip.Visibility = isMaximized ? Visibility.Collapsed : Visibility.Visible;
         ApplyRoundedWindowClip();
     }
 
@@ -337,6 +348,8 @@ public partial class WallpaperWindow : Window
 
         _loadCancellation?.Cancel();
         _loadCancellation = new CancellationTokenSource();
+        _thumbnailQueue.Clear();
+        _thumbnailQueueTimer.Stop();
         _currentPage = 0;
         _hasMorePages = true;
         _isLoading = false;
@@ -409,8 +422,7 @@ public partial class WallpaperWindow : Window
                 lastPage = result?.Meta?.LastPage;
             }
 
-            foreach (var wallpaper in wallpapers)
-                _wallpapers.Add(wallpaper);
+            await AppendWallpapersAsync(wallpapers, cancellationToken);
 
             TrimWallpaperCache();
 
@@ -470,11 +482,65 @@ public partial class WallpaperWindow : Window
             Math.Max(0, previousOffset - removedRows * WallpaperCardPitch));
     }
 
+    private async Task AppendWallpapersAsync(
+        IReadOnlyList<WallpaperCard> wallpapers,
+        CancellationToken cancellationToken)
+    {
+        for (var index = 0; index < wallpapers.Count; index++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            _wallpapers.Add(wallpapers[index]);
+            QueueThumbnailLoad(wallpapers[index]);
+
+            if ((index + 1) % WallpaperAppendBatchSize == 0)
+            {
+                await Dispatcher.Yield(System.Windows.Threading.DispatcherPriority.Background);
+                await Task.Delay(35, cancellationToken);
+            }
+        }
+    }
+
+    private void QueueThumbnailLoad(WallpaperCard wallpaper)
+    {
+        if (wallpaper.ThumbnailImage is not null)
+            return;
+
+        wallpaper.IsThumbnailLoading = true;
+        _thumbnailQueue.Enqueue(wallpaper);
+        if (!_thumbnailQueueTimer.IsEnabled)
+            _thumbnailQueueTimer.Start();
+    }
+
+    private void ThumbnailQueueTimer_Tick(object? sender, EventArgs e)
+    {
+        while (_thumbnailQueue.Count > 0)
+        {
+            var wallpaper = _thumbnailQueue.Dequeue();
+            if (!_wallpapers.Contains(wallpaper) || wallpaper.ThumbnailImage is not null)
+                continue;
+
+            try
+            {
+                wallpaper.SetThumbnail(WallpaperCard.CreateImage(wallpaper.ThumbnailUrl, 260));
+            }
+            catch
+            {
+                wallpaper.MarkThumbnailFailed();
+            }
+
+            return;
+        }
+
+        _thumbnailQueueTimer.Stop();
+    }
+
     private void ReleaseWallpaperResources()
     {
         _loadCancellation?.Cancel();
         _loadCancellation?.Dispose();
         _loadCancellation = null;
+        _thumbnailQueue.Clear();
+        _thumbnailQueueTimer.Stop();
         StopLoadingAnimation();
         WallpapersItemsControl.ItemsSource = null;
         TagsItemsControl.ItemsSource = null;
@@ -738,7 +804,7 @@ public partial class WallpaperWindow : Window
 
         var remainingDistance =
             e.ExtentHeight - e.VerticalOffset - e.ViewportHeight;
-        var prefetchDistance = Math.Max(420, e.ViewportHeight * 0.9);
+        var prefetchDistance = Math.Max(260, e.ViewportHeight * 0.45);
 
         if (remainingDistance <= prefetchDistance)
             await LoadNextPageAsync();
@@ -1116,6 +1182,9 @@ public partial class WallpaperWindow : Window
     private void ShowFavoriteWallpapers()
     {
         _loadCancellation?.Cancel();
+        _loadCancellation = new CancellationTokenSource();
+        _thumbnailQueue.Clear();
+        _thumbnailQueueTimer.Stop();
         _currentPage = 0;
         _hasMorePages = false;
         _isLoading = false;
@@ -1124,7 +1193,7 @@ public partial class WallpaperWindow : Window
 
         foreach (var favorite in _favoriteWallpapers.Values.OrderByDescending(item => item.AddedAt))
         {
-            _wallpapers.Add(new WallpaperCard(
+            var wallpaper = new WallpaperCard(
                 favorite.Id,
                 favorite.ThumbnailUrl,
                 favorite.PageUrl,
@@ -1137,7 +1206,9 @@ public partial class WallpaperWindow : Window
                 favorite.FileSize)
             {
                 IsFavorite = true
-            });
+            };
+            _wallpapers.Add(wallpaper);
+            QueueThumbnailLoad(wallpaper);
         }
 
         WallpapersScrollViewer.ScrollToTop();
@@ -1233,9 +1304,21 @@ public partial class WallpaperWindow : Window
             return;
 
         var owner = Window.GetWindow(sender as DependencyObject);
+        if (ActiveDetailsWindow is { IsLoaded: true } existingWindow)
+        {
+            existingWindow.Close();
+            ActiveDetailsWindow = null;
+        }
+
         var detailsWindow = new WallpaperDetailsWindow(wallpaper)
         {
             Owner = owner
+        };
+        ActiveDetailsWindow = detailsWindow;
+        detailsWindow.Closed += (_, _) =>
+        {
+            if (ReferenceEquals(ActiveDetailsWindow, detailsWindow))
+                ActiveDetailsWindow = null;
         };
         detailsWindow.Show();
         BringWindowToFront(detailsWindow);
@@ -1244,10 +1327,19 @@ public partial class WallpaperWindow : Window
     private void WallpaperButton_MouseEnter(object sender, MouseEventArgs e)
     {
         if (sender is not Button button ||
-            button.Tag is not WallpaperCard { VideoPreviewUrl: { Length: > 0 } })
+            button.Tag is not WallpaperCard wallpaper ||
+            string.IsNullOrWhiteSpace(wallpaper.VideoPreviewUrl))
         {
             return;
         }
+
+        if (_activePreviewButton is not null && !ReferenceEquals(_activePreviewButton, button))
+            StopWallpaperPreview(_activePreviewButton);
+
+        _activePreviewButton = button;
+
+        if (FindVisualChild<MediaElement>(button) is { } preloadElement)
+            PreloadWallpaperPreview(preloadElement, wallpaper);
 
         var timer = new DispatcherTimer
         {
@@ -1266,10 +1358,16 @@ public partial class WallpaperWindow : Window
             if (FindVisualChild<MediaElement>(button) is not { } mediaElement)
                 return;
 
-            mediaElement.Source = new Uri(wallpaper.VideoPreviewUrl, UriKind.Absolute);
-            mediaElement.Visibility = Visibility.Visible;
+            button.Resources["WallpaperPreviewRequested"] = true;
+            PreloadWallpaperPreview(mediaElement, wallpaper);
+            wallpaper.IsPreviewLoading = true;
+            mediaElement.Opacity = wallpaper.IsPreviewReady ? 1 : 0;
             mediaElement.Position = TimeSpan.Zero;
             mediaElement.Play();
+            if (wallpaper.IsPreviewReady)
+                wallpaper.IsPreviewLoading = false;
+
+            StartWallpaperPreviewLoop(button, mediaElement);
         };
 
         button.Resources["WallpaperHoverPreviewTimer"] = timer;
@@ -1281,18 +1379,123 @@ public partial class WallpaperWindow : Window
         if (sender is not Button button)
             return;
 
+        StopWallpaperPreview(button);
+    }
+
+    private void StopWallpaperPreview(Button button)
+    {
         if (button.Resources["WallpaperHoverPreviewTimer"] is DispatcherTimer timer)
         {
             timer.Stop();
             button.Resources.Remove("WallpaperHoverPreviewTimer");
         }
 
+        StopWallpaperPreviewLoop(button);
+        button.Resources.Remove("WallpaperPreviewRequested");
+
         if (FindVisualChild<MediaElement>(button) is not { } mediaElement)
             return;
 
+        if (button.Tag is WallpaperCard wallpaper)
+        {
+            wallpaper.IsPreviewLoading = false;
+            wallpaper.IsPreviewReady = false;
+        }
+
         mediaElement.Stop();
         mediaElement.Source = null;
+        mediaElement.Opacity = 0;
         mediaElement.Visibility = Visibility.Collapsed;
+
+        if (ReferenceEquals(_activePreviewButton, button))
+            _activePreviewButton = null;
+    }
+
+    private static void PreloadWallpaperPreview(MediaElement mediaElement, WallpaperCard wallpaper)
+    {
+        if (string.IsNullOrWhiteSpace(wallpaper.VideoPreviewUrl))
+            return;
+
+        var videoPreviewUrl = wallpaper.VideoPreviewUrl;
+        var previewUri = new Uri(videoPreviewUrl, UriKind.Absolute);
+        if (mediaElement.Source is null ||
+            !Uri.Compare(mediaElement.Source, previewUri, UriComponents.AbsoluteUri, UriFormat.SafeUnescaped, StringComparison.OrdinalIgnoreCase).Equals(0))
+        {
+            wallpaper.IsPreviewReady = false;
+            mediaElement.Source = previewUri;
+            mediaElement.Position = TimeSpan.Zero;
+        }
+
+        mediaElement.Volume = 0;
+        mediaElement.Visibility = Visibility.Visible;
+        mediaElement.Opacity = 0;
+    }
+
+    private void StartWallpaperPreviewLoop(Button button, MediaElement mediaElement)
+    {
+        StopWallpaperPreviewLoop(button);
+        var lastPosition = TimeSpan.MinValue;
+        var stalledTicks = 0;
+
+        var loopTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(140)
+        };
+        loopTimer.Tick += (_, _) =>
+        {
+            if (!button.IsMouseOver ||
+                mediaElement.Visibility != Visibility.Visible ||
+                mediaElement.Opacity <= 0)
+            {
+                StopWallpaperPreviewLoop(button);
+                return;
+            }
+
+            if (!mediaElement.NaturalDuration.HasTimeSpan)
+            {
+                mediaElement.Play();
+                return;
+            }
+
+            var duration = mediaElement.NaturalDuration.TimeSpan;
+            if (duration <= TimeSpan.Zero)
+                return;
+
+            if (mediaElement.Position >= duration - TimeSpan.FromMilliseconds(300))
+            {
+                RestartWallpaperPreview(mediaElement);
+                lastPosition = TimeSpan.Zero;
+                stalledTicks = 0;
+                return;
+            }
+
+            if (mediaElement.Position == lastPosition)
+            {
+                stalledTicks++;
+                if (stalledTicks >= 5)
+                {
+                    mediaElement.Play();
+                    stalledTicks = 0;
+                }
+            }
+            else
+            {
+                lastPosition = mediaElement.Position;
+                stalledTicks = 0;
+            }
+        };
+
+        button.Resources["WallpaperPreviewLoopTimer"] = loopTimer;
+        loopTimer.Start();
+    }
+
+    private static void StopWallpaperPreviewLoop(Button button)
+    {
+        if (button.Resources["WallpaperPreviewLoopTimer"] is not DispatcherTimer loopTimer)
+            return;
+
+        loopTimer.Stop();
+        button.Resources.Remove("WallpaperPreviewLoopTimer");
     }
 
     private static T? FindVisualChild<T>(DependencyObject parent)
@@ -1317,8 +1520,52 @@ public partial class WallpaperWindow : Window
         if (sender is not MediaElement { Visibility: Visibility.Visible } mediaElement)
             return;
 
-        mediaElement.Position = TimeSpan.Zero;
-        mediaElement.Play();
+        RestartWallpaperPreview(mediaElement);
+    }
+
+    private static void RestartWallpaperPreview(MediaElement mediaElement)
+    {
+        mediaElement.Dispatcher.BeginInvoke(new Action(() =>
+        {
+            mediaElement.Stop();
+            mediaElement.Position = TimeSpan.Zero;
+            mediaElement.Play();
+        }), System.Windows.Threading.DispatcherPriority.Background);
+    }
+
+    private void WallpaperVideo_MediaOpened(object sender, RoutedEventArgs e)
+    {
+        if (sender is not MediaElement mediaElement ||
+            mediaElement.DataContext is not WallpaperCard wallpaper)
+        {
+            return;
+        }
+
+        wallpaper.IsPreviewReady = true;
+        wallpaper.IsPreviewLoading = false;
+        if (FindVisualParent<Button>(mediaElement) is { } button &&
+            button.IsMouseOver &&
+            button.Resources.Contains("WallpaperPreviewRequested"))
+        {
+            mediaElement.Opacity = 1;
+            mediaElement.Play();
+        }
+    }
+
+    private void WallpaperVideo_MediaFailed(object sender, ExceptionRoutedEventArgs e)
+    {
+        if (sender is not MediaElement mediaElement ||
+            mediaElement.DataContext is not WallpaperCard wallpaper)
+        {
+            return;
+        }
+
+        wallpaper.IsPreviewReady = false;
+        wallpaper.IsPreviewLoading = false;
+        mediaElement.Stop();
+        mediaElement.Source = null;
+        mediaElement.Opacity = 0;
+        mediaElement.Visibility = Visibility.Collapsed;
     }
 
     private void WallpaperVideo_Unloaded(object sender, RoutedEventArgs e)
@@ -1326,8 +1573,27 @@ public partial class WallpaperWindow : Window
         if (sender is not MediaElement mediaElement)
             return;
 
+        if (mediaElement.DataContext is WallpaperCard wallpaper)
+            wallpaper.IsPreviewLoading = false;
+
         mediaElement.Stop();
         mediaElement.Source = null;
+        mediaElement.Opacity = 0;
+    }
+
+    private static T? FindVisualParent<T>(DependencyObject child)
+        where T : DependencyObject
+    {
+        var parent = VisualTreeHelper.GetParent(child);
+        while (parent is not null)
+        {
+            if (parent is T typedParent)
+                return typedParent;
+
+            parent = VisualTreeHelper.GetParent(parent);
+        }
+
+        return null;
     }
 
     private static void BringWindowToFront(Window window)
@@ -1355,29 +1621,10 @@ public partial class WallpaperWindow : Window
         if (_isEmbedded)
             return;
 
-        if (_isCustomMaximized)
-        {
-            Left = _restoreBounds.Left;
-            Top = _restoreBounds.Top;
-            Width = _restoreBounds.Width;
-            Height = _restoreBounds.Height;
-            _isCustomMaximized = false;
-        }
+        if (_isCustomMaximized || WindowState == WindowState.Maximized)
+            RestoreFromCustomMaximized();
         else
-        {
-            _restoreBounds = new Rect(Left, Top, Width, Height);
-            var workArea = SystemParameters.WorkArea;
-            Left = workArea.Left;
-            Top = workArea.Top;
-            Width = workArea.Width;
-            Height = workArea.Height;
-            _isCustomMaximized = true;
-        }
-
-        MaximizeIcon.Kind = _isCustomMaximized
-            ? MahApps.Metro.IconPacks.PackIconLucideKind.Copy
-            : MahApps.Metro.IconPacks.PackIconLucideKind.Square;
-        UpdateWindowChrome();
+            MaximizeToCurrentMonitorWorkArea();
     }
 
     private void TitleBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -1385,8 +1632,216 @@ public partial class WallpaperWindow : Window
         if (_isEmbedded)
             return;
 
-        if (!_isCustomMaximized && e.ButtonState == MouseButtonState.Pressed)
+        if (e.ButtonState != MouseButtonState.Pressed)
+            return;
+
+        if (_isCustomMaximized || WindowState == WindowState.Maximized)
+            RestoreFromCustomMaximizedForDrag(e.GetPosition(this));
+
+        TryDragMove();
+    }
+
+    private void RestoreFromCustomMaximizedForDrag(Point mousePosition)
+    {
+        if (_restoreBounds.Width <= 0 || _restoreBounds.Height <= 0)
+        {
+            var workArea = GetCurrentMonitorWorkArea();
+            _restoreBounds = new Rect(
+                workArea.Left,
+                workArea.Top,
+                Math.Max(MinWidth, workArea.Width * 0.62),
+                Math.Max(MinHeight, workArea.Height * 0.62));
+        }
+
+        var screenPoint = PointToScreen(mousePosition);
+        var horizontalRatio = ActualWidth <= 0
+            ? 0.5
+            : Math.Clamp(mousePosition.X / ActualWidth, 0.08, 0.92);
+
+        WindowState = WindowState.Normal;
+        Width = _restoreBounds.Width;
+        Height = _restoreBounds.Height;
+        Left = screenPoint.X - Width * horizontalRatio;
+        Top = screenPoint.Y - Math.Min(mousePosition.Y, 28);
+        _isCustomMaximized = false;
+        MaximizeIcon.Kind = MahApps.Metro.IconPacks.PackIconLucideKind.Square;
+        UpdateWindowChrome();
+    }
+
+    private void MaximizeToCurrentMonitorWorkArea()
+    {
+        if (WindowState != WindowState.Normal)
+            WindowState = WindowState.Normal;
+
+        _restoreBounds = new Rect(
+            Left,
+            Top,
+            Math.Max(MinWidth, ActualWidth > 0 ? ActualWidth : Width),
+            Math.Max(MinHeight, ActualHeight > 0 ? ActualHeight : Height));
+
+        SetWindowToCurrentMonitorSafeArea();
+        _isCustomMaximized = true;
+        MaximizeIcon.Kind = MahApps.Metro.IconPacks.PackIconLucideKind.Copy;
+        UpdateWindowChrome();
+    }
+
+    private void RestoreFromCustomMaximized()
+    {
+        if (WindowState != WindowState.Normal)
+            WindowState = WindowState.Normal;
+
+        if (_restoreBounds.Width <= 0 || _restoreBounds.Height <= 0)
+        {
+            var workArea = GetCurrentMonitorWorkArea();
+            _restoreBounds = new Rect(
+                workArea.Left + workArea.Width * 0.19,
+                workArea.Top + workArea.Height * 0.12,
+                Math.Max(MinWidth, workArea.Width * 0.62),
+                Math.Max(MinHeight, workArea.Height * 0.62));
+        }
+
+        Left = _restoreBounds.Left;
+        Top = _restoreBounds.Top;
+        Width = _restoreBounds.Width;
+        Height = _restoreBounds.Height;
+        _isCustomMaximized = false;
+        MaximizeIcon.Kind = MahApps.Metro.IconPacks.PackIconLucideKind.Square;
+        UpdateWindowChrome();
+    }
+
+    private Rect GetCurrentMonitorWorkArea()
+    {
+        var handle = new WindowInteropHelper(this).Handle;
+        if (handle != IntPtr.Zero)
+        {
+            var monitor = MonitorFromWindow(handle, MonitorDefaultToNearest);
+            if (monitor != IntPtr.Zero)
+            {
+                var info = new MonitorInfo { Size = Marshal.SizeOf<MonitorInfo>() };
+                if (GetMonitorInfo(monitor, ref info))
+                    return KeepAboveTaskbar(
+                        DeviceRectToDipRect(info.Work),
+                        DeviceRectToDipRect(info.Monitor));
+            }
+        }
+
+        return KeepAboveTaskbar(
+            SystemParameters.WorkArea,
+            new Rect(0, 0, SystemParameters.PrimaryScreenWidth, SystemParameters.PrimaryScreenHeight));
+    }
+
+    private void SetWindowToCurrentMonitorSafeArea()
+    {
+        var handle = new WindowInteropHelper(this).Handle;
+        if (handle == IntPtr.Zero)
+            return;
+
+        var monitor = MonitorFromWindow(handle, MonitorDefaultToNearest);
+        if (monitor == IntPtr.Zero)
+            return;
+
+        var info = new MonitorInfo { Size = Marshal.SizeOf<MonitorInfo>() };
+        if (!GetMonitorInfo(monitor, ref info))
+            return;
+
+        var safe = GetSafeAreaDeviceRect(info);
+        SetWindowPos(
+            handle,
+            IntPtr.Zero,
+            safe.Left,
+            safe.Top,
+            Math.Max(1, safe.Width),
+            Math.Max(1, safe.Height),
+            SwpNoZOrder | SwpNoActivate);
+    }
+
+    private NativeRect GetSafeAreaDeviceRect(MonitorInfo info)
+    {
+        var safe = info.Monitor;
+        var workBottomGap = Math.Max(0, info.Monitor.Bottom - info.Work.Bottom);
+        var taskbarHeight = workBottomGap;
+
+        var data = new AppBarData { Size = Marshal.SizeOf<AppBarData>() };
+        if (SHAppBarMessage(AbmGetTaskbarPos, ref data) != IntPtr.Zero && data.Edge == AbeBottom)
+        {
+            var overlapsHorizontally = info.Monitor.Left < data.Rect.Right && info.Monitor.Right > data.Rect.Left;
+            if (overlapsHorizontally)
+                taskbarHeight = Math.Max(taskbarHeight, data.Rect.Height);
+        }
+
+        if (taskbarHeight < 24 || taskbarHeight > 240)
+            taskbarHeight = GetFallbackTaskbarHeightDevice();
+
+        safe.Bottom = Math.Max(safe.Top + 1, safe.Bottom - taskbarHeight);
+        return safe;
+    }
+
+    private int GetFallbackTaskbarHeightDevice()
+    {
+        var source = PresentationSource.FromVisual(this);
+        var scaleY = source?.CompositionTarget?.TransformToDevice.M22 ?? 1;
+        return Math.Max(48, (int)Math.Round(56 * scaleY));
+    }
+
+    private Rect DeviceRectToDipRect(NativeRect rect)
+    {
+        var source = PresentationSource.FromVisual(this);
+        var transform = source?.CompositionTarget?.TransformFromDevice ?? Matrix.Identity;
+        var topLeft = transform.Transform(new Point(rect.Left, rect.Top));
+        var bottomRight = transform.Transform(new Point(rect.Right, rect.Bottom));
+        return new Rect(topLeft, bottomRight);
+    }
+
+    private Rect KeepAboveTaskbar(Rect workArea, Rect monitorArea)
+    {
+        var bottomTaskbarHeight = Math.Max(0, monitorArea.Bottom - workArea.Bottom);
+        var data = new AppBarData { Size = Marshal.SizeOf<AppBarData>() };
+        if (SHAppBarMessage(AbmGetTaskbarPos, ref data) != IntPtr.Zero && data.Edge == AbeBottom)
+        {
+            var taskbar = DeviceRectToDipRect(data.Rect);
+            var overlapsHorizontally = monitorArea.Left < taskbar.Right && monitorArea.Right > taskbar.Left;
+            if (overlapsHorizontally)
+                bottomTaskbarHeight = Math.Max(bottomTaskbarHeight, taskbar.Height);
+        }
+
+        if (bottomTaskbarHeight < 24)
+            bottomTaskbarHeight = 56;
+        else if (bottomTaskbarHeight > 160)
+            bottomTaskbarHeight = 56;
+
+        var safeHeight = Math.Max(MinHeight, monitorArea.Height - bottomTaskbarHeight);
+
+        return new Rect(
+            monitorArea.Left,
+            monitorArea.Top,
+            monitorArea.Width,
+            safeHeight);
+    }
+
+    private void TryDragMove()
+    {
+        try
+        {
             DragMove();
+        }
+        catch (InvalidOperationException)
+        {
+        }
+    }
+
+    private void Window_StateChanged(object? sender, EventArgs e)
+    {
+        if (_isEmbedded || WindowState != WindowState.Maximized)
+            return;
+
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            if (WindowState != WindowState.Maximized)
+                return;
+
+            WindowState = WindowState.Normal;
+            MaximizeToCurrentMonitorWorkArea();
+        }));
     }
 
     private void ResizeGrip_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -1394,8 +1849,12 @@ public partial class WallpaperWindow : Window
         if (_isEmbedded)
             return;
 
-        if (_isCustomMaximized || e.ButtonState != MouseButtonState.Pressed)
+        if (_isCustomMaximized ||
+            WindowState == WindowState.Maximized ||
+            e.ButtonState != MouseButtonState.Pressed)
+        {
             return;
+        }
 
         _isResizing = true;
         _resizeStartScreenPosition = PointToScreen(e.GetPosition(this));
@@ -1424,6 +1883,57 @@ public partial class WallpaperWindow : Window
         _isResizing = false;
         ((UIElement)sender).ReleaseMouseCapture();
         e.Handled = true;
+    }
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr MonitorFromWindow(IntPtr hwnd, int dwFlags);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool GetMonitorInfo(IntPtr hMonitor, ref MonitorInfo lpmi);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool SetWindowPos(
+        IntPtr hWnd,
+        IntPtr hWndInsertAfter,
+        int x,
+        int y,
+        int cx,
+        int cy,
+        uint flags);
+
+    [DllImport("shell32.dll")]
+    private static extern IntPtr SHAppBarMessage(int dwMessage, ref AppBarData pData);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MonitorInfo
+    {
+        public int Size;
+        public NativeRect Monitor;
+        public NativeRect Work;
+        public uint Flags;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeRect
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+
+        public int Width => Right - Left;
+        public int Height => Bottom - Top;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct AppBarData
+    {
+        public int Size;
+        public IntPtr Window;
+        public uint CallbackMessage;
+        public uint Edge;
+        public NativeRect Rect;
+        public int Param;
     }
 
     private sealed record TagChip(string Text, Brush Background);
@@ -1521,11 +2031,13 @@ public sealed record WallpaperCard(
     long? FileSize) : INotifyPropertyChanged
 {
     private bool _isFavorite;
+    private bool _isThumbnailLoading = true;
+    private bool _isPreviewLoading;
+    private bool _isPreviewReady;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
-    public ImageSource? ThumbnailImage { get; private set; } =
-        CreateImage(ThumbnailUrl, 320);
+    public ImageSource? ThumbnailImage { get; private set; }
 
     public bool IsFavorite
     {
@@ -1540,7 +2052,66 @@ public sealed record WallpaperCard(
         }
     }
 
-    public void ReleaseThumbnail() => ThumbnailImage = null;
+    public bool IsPreviewLoading
+    {
+        get => _isPreviewLoading;
+        set
+        {
+            if (_isPreviewLoading == value)
+                return;
+
+            _isPreviewLoading = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(IsBusy));
+        }
+    }
+
+    public bool IsThumbnailLoading
+    {
+        get => _isThumbnailLoading;
+        set
+        {
+            if (_isThumbnailLoading == value)
+                return;
+
+            _isThumbnailLoading = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(IsBusy));
+        }
+    }
+
+    public bool IsBusy => IsThumbnailLoading || IsPreviewLoading;
+
+    public bool IsPreviewReady
+    {
+        get => _isPreviewReady;
+        set
+        {
+            if (_isPreviewReady == value)
+                return;
+
+            _isPreviewReady = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public void ReleaseThumbnail()
+    {
+        ThumbnailImage = null;
+        OnPropertyChanged(nameof(ThumbnailImage));
+        IsThumbnailLoading = false;
+        IsPreviewLoading = false;
+        IsPreviewReady = false;
+    }
+
+    public void SetThumbnail(ImageSource image)
+    {
+        ThumbnailImage = image;
+        OnPropertyChanged(nameof(ThumbnailImage));
+        IsThumbnailLoading = false;
+    }
+
+    public void MarkThumbnailFailed() => IsThumbnailLoading = false;
 
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null) =>
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
@@ -1554,8 +2125,9 @@ public sealed record WallpaperCard(
         image.CacheOption = BitmapCacheOption.OnLoad;
         image.CreateOptions = BitmapCreateOptions.IgnoreImageCache;
         image.EndInit();
-        if (image.CanFreeze && !image.IsDownloading)
+        if (image.CanFreeze)
             image.Freeze();
         return image;
     }
+
 }

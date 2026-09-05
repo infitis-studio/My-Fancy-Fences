@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Interop;
+using Microsoft.Web.WebView2.Core;
 
 namespace My_Fancy_Fences;
 
@@ -10,6 +11,7 @@ public partial class LiveWallpaperWindow : Window
 {
     private static readonly IntPtr HwndBottom = new(1);
     private static readonly IntPtr HwndTop = new(0);
+    private const string LocalWallpaperHost = "my-fancy-fences-live.local";
 
     private const int SwpNoActivate = 0x0010;
     private const int SwpNoZOrder = 0x0004;
@@ -67,7 +69,26 @@ public partial class LiveWallpaperWindow : Window
         WallpaperWebView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
         WallpaperWebView.CoreWebView2.Settings.AreDevToolsEnabled = false;
         WallpaperWebView.CoreWebView2.Settings.IsStatusBarEnabled = false;
-        WallpaperWebView.NavigateToString(CreateVideoHtml(_videoUri));
+
+        var playbackUri = _videoUri;
+        if (_videoUri.IsFile)
+        {
+            var localDirectory = Path.GetDirectoryName(_videoUri.LocalPath);
+            if (!string.IsNullOrWhiteSpace(localDirectory) &&
+                Directory.Exists(localDirectory))
+            {
+                WallpaperWebView.CoreWebView2.SetVirtualHostNameToFolderMapping(
+                    LocalWallpaperHost,
+                    localDirectory,
+                    CoreWebView2HostResourceAccessKind.Allow);
+                playbackUri = new Uri($"https://{LocalWallpaperHost}/{Uri.EscapeDataString(Path.GetFileName(_videoUri.LocalPath))}");
+                Log($"Mapped local video directory={localDirectory} source={playbackUri}");
+            }
+        }
+
+        WallpaperWebView.WebMessageReceived += (_, args) =>
+            Log($"WebView: {args.TryGetWebMessageAsString()}");
+        WallpaperWebView.NavigateToString(CreateVideoHtml(playbackUri));
         Log($"Video started target={_attachedTargetKind}");
     }
 
@@ -97,6 +118,16 @@ public partial class LiveWallpaperWindow : Window
             </head>
             <body>
                 {{videos}}
+                <script>
+                    for (const video of document.querySelectorAll('video')) {
+                        video.addEventListener('loadedmetadata', () => chrome.webview.postMessage(`loadedmetadata ${video.videoWidth}x${video.videoHeight}`));
+                        video.addEventListener('playing', () => chrome.webview.postMessage('playing'));
+                        video.addEventListener('error', () => chrome.webview.postMessage(`error ${video.error ? video.error.code : 'unknown'}`));
+                        const play = () => video.play().catch(error => chrome.webview.postMessage(`play-failed ${error && error.message ? error.message : error}`));
+                        video.addEventListener('canplay', play, { once: true });
+                        play();
+                    }
+                </script>
             </body>
             </html>
             """;
@@ -121,7 +152,7 @@ public partial class LiveWallpaperWindow : Window
             {
                 var left = screen.Left - virtualBounds.Left;
                 var top = screen.Top - virtualBounds.Top;
-                return $$"""<video class="monitor-video" style="left:{{left}}px;top:{{top}}px;width:{{screen.Width}}px;height:{{screen.Height}}px;" src={{serializedSource}} autoplay muted loop playsinline></video>""";
+                return $$"""<video class="monitor-video" style="left:{{left}}px;top:{{top}}px;width:{{screen.Width}}px;height:{{screen.Height}}px;" src={{serializedSource}} autoplay muted loop playsinline preload="auto"></video>""";
             }));
     }
 

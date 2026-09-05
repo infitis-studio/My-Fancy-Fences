@@ -494,7 +494,9 @@ public static class LocalizationService
         AddEnglishFallback("Panel zostanie trwale usunięty wraz z jego zapisanymi ustawieniami. Tej operacji nie można cofnąć.", "The panel will be permanently deleted with its saved settings. This action cannot be undone.");
         AddEnglishFallback("Pobieranie aktualizacji…", "Downloading update…");
         AddEnglishFallback("Pobieranie tapety...", "Downloading wallpaper...");
+        AddEnglishFallback("Pobieranie tapety wideo w najwyższej jakości...", "Downloading the highest quality video wallpaper...");
         AddEnglishFallback("Pobrano", "Downloaded");
+        AddEnglishFallback("Pobrany plik wideo jest niekompletny.", "The downloaded video file is incomplete.");
         AddEnglishFallback("Pobrany plik nie jest prawidłowym obrazem.", "The downloaded file is not a valid image.");
         AddEnglishFallback("Podaj kolor obramowania w formacie HEX, np. #FFFFFF.", "Enter the border color in HEX format, e.g. #FFFFFF.");
         AddEnglishFallback("Podaj kolor podpisów ikon w formacie HEX, np. #FFFFFF.", "Enter the icon caption color in HEX format, e.g. #FFFFFF.");
