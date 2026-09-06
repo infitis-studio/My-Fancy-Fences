@@ -11,8 +11,8 @@
   </p>
 
   <p>
-    <em>A customizable, open-source tool for organizing your Windows desktop.</em><br />
-    <strong>Clean, lightweight, and always within reach.</strong>
+    <em>Desktop panels, shortcuts, layouts, and wallpapers in one clean Windows tool.</em><br />
+    <strong>Organize faster. Switch layouts instantly. Bring your desktop to life.</strong>
   </p>
 </div>
 
@@ -30,24 +30,24 @@
 
 ## Features
 
-- Multiple independent desktop panels
-- App-managed shortcuts, so users do not need to maintain source folders
-- Empty-panel prompt with click or drag-and-drop shortcut creation
-- Custom colors, transparency, borders, and corner radius
-- Separate typography settings for headers and icon labels
-- Adjustable icon size and single-click or double-click activation
-- Add files, apps, and shortcuts to panels with drag and drop
-- Manage, show, hide, create, and remove panels from one management window
-- Save multiple panel layouts and switch between them from the management window
-- Assign global keyboard shortcuts to switch panel layouts instantly
-- Apply shared appearance settings across all panels from the management window
-- Smooth scrolling across management, appearance, wallpaper, and panel views
-- Browse Wallhaven wallpapers with search and filters inside the management window
-- Preview, download, and set wallpapers without leaving the app
-- System tray controls and optional Windows startup
-- Clean Lucide outline icons
-- Import and export configuration as a ZIP archive
-- Automatic settings backup
+- Create clean desktop panels for apps, files, folders, and shortcuts
+- Drag and drop items directly onto panels
+- Save multiple desktop layouts and switch between them instantly
+- Assign global hotkeys for layout switching
+- Customize panel colors, transparency, borders, typography, and icon size
+- Browse, favorite, download, and set wallpapers inside the app
+- Set static wallpapers and experimental live wallpapers
+- Manage everything from one polished management window
+- Use tray controls, optional startup, import/export, and automatic backups
+
+## Wallpaper Sources
+
+My Fancy Fences can browse wallpapers from third-party sources:
+
+- [Wallhaven](https://wallhaven.cc/) — static wallpapers through the Wallhaven API.
+- [MotionBGs / MoeWalls](https://motionbgs.com/) — animated live wallpapers and previews.
+
+Wallpapers remain the property of their original owners. My Fancy Fences does not include wallpaper files in the repository or release packages; it only helps users browse, preview, download, and apply wallpapers from supported sources.
 
 ## Quick Start
 
@@ -79,6 +79,7 @@ dotnet run --project "My Fancy Fences/My Fancy Fences.csproj"
 - WPF and .NET 10
 - [MahApps.Metro.IconPacks.Lucide](https://github.com/MahApps/MahApps.Metro.IconPacks)
 - [Wallhaven API](https://wallhaven.cc/help/api)
+- [MotionBGs / MoeWalls](https://motionbgs.com/)
 
 ## Project Status
 
