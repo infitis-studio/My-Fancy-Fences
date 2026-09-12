@@ -42,6 +42,7 @@ public partial class WallpaperWindow : Window
     private readonly Dictionary<string, FavoriteWallpaper> _favoriteWallpapers =
         new(StringComparer.OrdinalIgnoreCase);
     private readonly ObservableCollection<WallpaperCard> _wallpapers = [];
+    private readonly HashSet<string> _loadedWallpaperIds = new(StringComparer.OrdinalIgnoreCase);
     private readonly Queue<WallpaperCard> _thumbnailQueue = new();
     private readonly DispatcherTimer _thumbnailQueueTimer = new()
     {
@@ -354,6 +355,7 @@ public partial class WallpaperWindow : Window
         _hasMorePages = true;
         _isLoading = false;
         _wallpapers.Clear();
+        _loadedWallpaperIds.Clear();
         WallpapersScrollViewer.ScrollToTop();
         await LoadNextPageAsync(showOverlay: true);
     }
@@ -489,8 +491,12 @@ public partial class WallpaperWindow : Window
         for (var index = 0; index < wallpapers.Count; index++)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            _wallpapers.Add(wallpapers[index]);
-            QueueThumbnailLoad(wallpapers[index]);
+            var wallpaper = wallpapers[index];
+            if (!_loadedWallpaperIds.Add(wallpaper.Id))
+                continue;
+
+            _wallpapers.Add(wallpaper);
+            QueueThumbnailLoad(wallpaper);
 
             if ((index + 1) % WallpaperAppendBatchSize == 0)
             {
@@ -551,6 +557,7 @@ public partial class WallpaperWindow : Window
         foreach (var wallpaper in _wallpapers)
             wallpaper.ReleaseThumbnail();
         _wallpapers.Clear();
+        _loadedWallpaperIds.Clear();
         _tags.Clear();
     }
 
@@ -1190,6 +1197,7 @@ public partial class WallpaperWindow : Window
         _isLoading = false;
         StopLoadingAnimation();
         _wallpapers.Clear();
+        _loadedWallpaperIds.Clear();
 
         foreach (var favorite in _favoriteWallpapers.Values.OrderByDescending(item => item.AddedAt))
         {
@@ -1207,6 +1215,9 @@ public partial class WallpaperWindow : Window
             {
                 IsFavorite = true
             };
+            if (!_loadedWallpaperIds.Add(wallpaper.Id))
+                continue;
+
             _wallpapers.Add(wallpaper);
             QueueThumbnailLoad(wallpaper);
         }
@@ -1338,12 +1349,9 @@ public partial class WallpaperWindow : Window
 
         _activePreviewButton = button;
 
-        if (FindVisualChild<MediaElement>(button) is { } preloadElement)
-            PreloadWallpaperPreview(preloadElement, wallpaper);
-
         var timer = new DispatcherTimer
         {
-            Interval = TimeSpan.FromSeconds(1)
+            Interval = TimeSpan.FromMilliseconds(500)
         };
         timer.Tick += (_, _) =>
         {
@@ -1362,12 +1370,14 @@ public partial class WallpaperWindow : Window
             PreloadWallpaperPreview(mediaElement, wallpaper);
             wallpaper.IsPreviewLoading = true;
             mediaElement.Opacity = wallpaper.IsPreviewReady ? 1 : 0;
-            mediaElement.Position = TimeSpan.Zero;
+            if (wallpaper.IsPreviewReady)
+                mediaElement.Position = TimeSpan.Zero;
             mediaElement.Play();
             if (wallpaper.IsPreviewReady)
+            {
                 wallpaper.IsPreviewLoading = false;
-
-            StartWallpaperPreviewLoop(button, mediaElement);
+                StartWallpaperPreviewLoop(button, mediaElement);
+            }
         };
 
         button.Resources["WallpaperHoverPreviewTimer"] = timer;
@@ -1444,8 +1454,7 @@ public partial class WallpaperWindow : Window
         loopTimer.Tick += (_, _) =>
         {
             if (!button.IsMouseOver ||
-                mediaElement.Visibility != Visibility.Visible ||
-                mediaElement.Opacity <= 0)
+                mediaElement.Visibility != Visibility.Visible)
             {
                 StopWallpaperPreviewLoop(button);
                 return;
@@ -1548,7 +1557,9 @@ public partial class WallpaperWindow : Window
             button.Resources.Contains("WallpaperPreviewRequested"))
         {
             mediaElement.Opacity = 1;
+            mediaElement.Position = TimeSpan.Zero;
             mediaElement.Play();
+            StartWallpaperPreviewLoop(button, mediaElement);
         }
     }
 

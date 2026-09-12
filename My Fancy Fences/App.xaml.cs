@@ -12,6 +12,12 @@ public partial class App : Application
     {
         SmoothScrollService.Register();
 
+        if (ApplicationUpdater.TryResumePendingUpdateOnStartup())
+        {
+            Shutdown();
+            return;
+        }
+
         _singleInstanceMutex = new Mutex(
             initiallyOwned: true,
             SingleInstanceMutexName,

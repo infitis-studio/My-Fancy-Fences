@@ -1,6 +1,8 @@
 using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace My_Fancy_Fences;
 
@@ -8,6 +10,42 @@ public static class ApplicationUpdater
 {
     private const long BundledRuntimeSizeThreshold = 30L * 1024 * 1024;
     private static readonly HttpClient Client = CreateClient();
+    private static readonly string UpdateRootDirectory = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "My Fancy Fences",
+        "Updates");
+    private static readonly string PendingUpdatePath = Path.Combine(UpdateRootDirectory, "pending-update.json");
+    private static readonly string UpdateLogPath = Path.Combine(UpdateRootDirectory, "update.log");
+
+    public static bool TryResumePendingUpdateOnStartup()
+    {
+        try
+        {
+            if (!File.Exists(PendingUpdatePath))
+                return false;
+
+            var pending = JsonSerializer.Deserialize<PendingUpdate>(
+                File.ReadAllText(PendingUpdatePath));
+            if (pending is null ||
+                string.IsNullOrWhiteSpace(pending.TargetPath) ||
+                string.IsNullOrWhiteSpace(pending.DownloadedPath) ||
+                !File.Exists(pending.DownloadedPath))
+            {
+                SafeDelete(PendingUpdatePath);
+                return false;
+            }
+
+            AppendLog("Resuming pending update on startup.");
+            SafeDelete(PendingUpdatePath);
+            StartReplacementHelper(pending.TargetPath, pending.DownloadedPath, pending.Version);
+            return true;
+        }
+        catch (Exception exception)
+        {
+            AppendLog($"Failed to resume pending update: {exception}");
+            return false;
+        }
+    }
 
     public static UpdatePackageKind DetectCurrentPackageKind()
     {
@@ -29,14 +67,13 @@ public static class ApplicationUpdater
         CancellationToken cancellationToken = default)
     {
         var packageKind = DetectCurrentPackageKind();
-        var marker = packageKind == UpdatePackageKind.WithNet10
-            ? "WITH-NET10"
-            : "REQUIRES-NET10";
-        var asset = update.Assets.FirstOrDefault(candidate =>
-            candidate.Name.Contains(marker, StringComparison.OrdinalIgnoreCase) &&
-            candidate.Name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase));
+        var preferredMarker = "WITH-NET10";
+        var fallbackMarker = packageKind == UpdatePackageKind.WithNet10
+            ? "REQUIRES-NET10"
+            : "WITH-NET10";
+        var asset = FindAsset(update, preferredMarker) ?? FindAsset(update, fallbackMarker);
         if (asset is null)
-            throw new InvalidOperationException($"{LocalizationService.T("Wydanie nie zawiera pliku")} {marker}.");
+            throw new InvalidOperationException($"{LocalizationService.T("Wydanie nie zawiera pliku")} {preferredMarker}.");
 
         var downloadUri = new Uri(asset.DownloadUrl);
         if (!downloadUri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ||
@@ -48,12 +85,13 @@ public static class ApplicationUpdater
         var currentExecutable = GetCurrentExecutablePath();
         EnsureTargetDirectoryIsWritable(currentExecutable);
 
-        var updateDirectory = Path.Combine(
-            Path.GetTempPath(),
-            "MyFancyFencesUpdate",
-            Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(UpdateRootDirectory);
+        SafeDelete(PendingUpdatePath);
+        var updateDirectory = Path.Combine(UpdateRootDirectory, Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(updateDirectory);
         var downloadedExecutable = Path.Combine(updateDirectory, asset.Name);
+        AppendLog($"Preparing update {update.LatestTag}. Current executable: {currentExecutable}");
+        AppendLog($"Selected asset: {asset.Name} ({asset.Size} bytes)");
 
         using var response = await Client.GetAsync(
             downloadUri,
@@ -78,7 +116,15 @@ public static class ApplicationUpdater
         }
 
         ValidateDownloadedExecutable(downloadedExecutable, asset.Size);
-        StartReplacementHelper(currentExecutable, downloadedExecutable);
+        var pendingUpdate = new PendingUpdate(
+            currentExecutable,
+            downloadedExecutable,
+            update.LatestTag,
+            DateTimeOffset.Now);
+        File.WriteAllText(
+            PendingUpdatePath,
+            JsonSerializer.Serialize(pendingUpdate, new JsonSerializerOptions { WriteIndented = true }));
+        StartReplacementHelper(currentExecutable, downloadedExecutable, update.LatestTag);
         return packageKind;
     }
 
@@ -123,6 +169,11 @@ public static class ApplicationUpdater
         }
     }
 
+    private static UpdateAsset? FindAsset(UpdateCheckResult update, string marker) =>
+        update.Assets.FirstOrDefault(candidate =>
+            candidate.Name.Contains(marker, StringComparison.OrdinalIgnoreCase) &&
+            candidate.Name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase));
+
     private static void ValidateDownloadedExecutable(string path, long expectedSize)
     {
         var file = new FileInfo(path);
@@ -137,18 +188,41 @@ public static class ApplicationUpdater
             throw new InvalidDataException(LocalizationService.T("Pobrany plik nie jest prawidłową aplikacją Windows."));
     }
 
-    private static void StartReplacementHelper(string targetPath, string downloadedPath)
+    private static void StartReplacementHelper(string targetPath, string downloadedPath, string? version = null)
     {
         var scriptPath = Path.Combine(
             Path.GetDirectoryName(downloadedPath)!,
             "install-update.ps1");
         var backupPath = $"{targetPath}.previous";
+        var logPath = UpdateLogPath;
+        var pendingPath = PendingUpdatePath;
         var script = $$"""
             $ErrorActionPreference = 'Stop'
             $target = '{{EscapePowerShell(targetPath)}}'
             $download = '{{EscapePowerShell(downloadedPath)}}'
             $backup = '{{EscapePowerShell(backupPath)}}'
-            $targetDirectory = Split-Path -LiteralPath $target -Parent
+            $pending = '{{EscapePowerShell(pendingPath)}}'
+            $log = '{{EscapePowerShell(logPath)}}'
+            function Write-UpdateLog([string]$message) {
+                $directory = [System.IO.Path]::GetDirectoryName($log)
+                if (-not (Test-Path -LiteralPath $directory)) { New-Item -ItemType Directory -Path $directory -Force | Out-Null }
+                Add-Content -LiteralPath $log -Value "[$([DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss.fff'))] $message"
+            }
+            function Invoke-WithRetry([scriptblock]$operation, [string]$name) {
+                for ($attempt = 1; $attempt -le 30; $attempt++) {
+                    try {
+                        & $operation
+                        Write-UpdateLog "$name succeeded on attempt $attempt"
+                        return
+                    }
+                    catch {
+                        Write-UpdateLog "$name attempt $attempt failed: $($_.Exception.Message)"
+                        Start-Sleep -Milliseconds 300
+                    }
+                }
+                throw "$name failed after retries"
+            }
+            $targetDirectory = [System.IO.Path]::GetDirectoryName($target)
             $applicationBaseName = [System.IO.Path]::GetFileNameWithoutExtension($target)
             $sidecarPatterns = @(
                 "$applicationBaseName.dll",
@@ -157,25 +231,35 @@ public static class ApplicationUpdater
                 "$applicationBaseName.pdb"
             )
             try {
+                Write-UpdateLog "Installing update {{EscapePowerShell(version ?? string.Empty)}}"
+                Write-UpdateLog "Waiting for process {{Environment.ProcessId}}"
                 Wait-Process -Id {{Environment.ProcessId}} -ErrorAction SilentlyContinue
-                Start-Sleep -Milliseconds 350
-                if (Test-Path -LiteralPath $backup) { Remove-Item -LiteralPath $backup -Force }
-                if (Test-Path -LiteralPath $target) { Move-Item -LiteralPath $target -Destination $backup -Force }
+                Start-Sleep -Milliseconds 800
+                if (Test-Path -LiteralPath $backup) {
+                    Invoke-WithRetry { Remove-Item -LiteralPath $backup -Force } "Remove old backup"
+                }
+                if (Test-Path -LiteralPath $target) {
+                    Invoke-WithRetry { Move-Item -LiteralPath $target -Destination $backup -Force } "Move current executable to backup"
+                }
                 foreach ($pattern in $sidecarPatterns) {
                     $sidecar = Join-Path -Path $targetDirectory -ChildPath $pattern
                     if (Test-Path -LiteralPath $sidecar) {
                         Remove-Item -LiteralPath $sidecar -Force -ErrorAction SilentlyContinue
                     }
                 }
-                Move-Item -LiteralPath $download -Destination $target -Force
+                Invoke-WithRetry { Move-Item -LiteralPath $download -Destination $target -Force } "Move downloaded executable into place"
+                if (Test-Path -LiteralPath $pending) { Remove-Item -LiteralPath $pending -Force -ErrorAction SilentlyContinue }
+                Write-UpdateLog "Starting updated application: $target"
                 Start-Process -FilePath $target
                 Start-Sleep -Seconds 1
                 if (Test-Path -LiteralPath $backup) { Remove-Item -LiteralPath $backup -Force }
             }
             catch {
+                Write-UpdateLog "Update failed: $($_.Exception.Message)"
                 if (-not (Test-Path -LiteralPath $target) -and (Test-Path -LiteralPath $backup)) {
                     Move-Item -LiteralPath $backup -Destination $target -Force
                 }
+                Write-UpdateLog "Starting fallback application: $target"
                 if (Test-Path -LiteralPath $target) { Start-Process -FilePath $target }
             }
             Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue
@@ -193,14 +277,22 @@ public static class ApplicationUpdater
             "WindowsPowerShell",
             "v1.0",
             "powershell.exe");
-        Process.Start(new ProcessStartInfo
+        AppendLog($"Starting update helper: {scriptPath}");
+        try
         {
-            FileName = powershellPath,
-            Arguments = $"-NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File \"{scriptPath}\"",
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            WindowStyle = ProcessWindowStyle.Hidden
-        });
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = powershellPath,
+                Arguments = $"-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"{scriptPath}\"",
+                UseShellExecute = true,
+                WindowStyle = ProcessWindowStyle.Hidden
+            });
+        }
+        catch (Exception exception)
+        {
+            AppendLog($"Failed to start update helper: {exception}");
+            throw;
+        }
     }
 
     private static string GetCurrentExecutablePath() =>
@@ -210,6 +302,32 @@ public static class ApplicationUpdater
 
     private static string EscapePowerShell(string value) => value.Replace("'", "''");
 
+    private static void SafeDelete(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+                File.Delete(path);
+        }
+        catch
+        {
+        }
+    }
+
+    private static void AppendLog(string message)
+    {
+        try
+        {
+            Directory.CreateDirectory(UpdateRootDirectory);
+            File.AppendAllText(
+                UpdateLogPath,
+                $"[{DateTimeOffset.Now:yyyy-MM-dd HH:mm:ss.fff}] {message}{Environment.NewLine}");
+        }
+        catch
+        {
+        }
+    }
+
     private static HttpClient CreateClient()
     {
         var client = new HttpClient { Timeout = TimeSpan.FromMinutes(10) };
@@ -217,6 +335,12 @@ public static class ApplicationUpdater
         return client;
     }
 }
+
+public sealed record PendingUpdate(
+    [property: JsonPropertyName("targetPath")] string TargetPath,
+    [property: JsonPropertyName("downloadedPath")] string DownloadedPath,
+    [property: JsonPropertyName("version")] string Version,
+    [property: JsonPropertyName("createdAt")] DateTimeOffset CreatedAt);
 
 public enum UpdatePackageKind
 {
