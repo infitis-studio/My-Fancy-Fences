@@ -16,6 +16,24 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Validate release metadata
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          if ($env:RELEASE_TAG -cnotmatch '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$') {
+            throw 'Release tags must use vMAJOR.MINOR.PATCH (for example v4.5.0).'
+          }
+          $notesPath = ".github/release-notes/$env:RELEASE_TAG.md"
+          if (-not (Test-Path -LiteralPath $notesPath) -or
+              [string]::IsNullOrWhiteSpace((Get-Content -LiteralPath $notesPath -Raw))) {
+            throw "Missing release-specific changelog: $notesPath"
+          }
+          [xml]$project = Get-Content 'My Fancy Fences/My Fancy Fences.csproj'
+          if ([string]$project.Project.PropertyGroup.Version -ne $env:RELEASE_TAG.Substring(1)) {
+            throw 'The project version must match the release tag.'
+          }
+
       - name: Set up .NET
         uses: actions/setup-dotnet@v4
         with:
@@ -69,25 +87,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           make_latest: true
-          body: |
-            My Fancy Fences ${{ github.ref_name }} for Windows x64.
-
-            Highlights:
-            - Added MoeWalls browsing with source-specific filters, categories, sorting, and green source theme.
-            - Added animated wallpaper previews on hover and full preview in wallpaper details.
-            - Added experimental live wallpaper support with per-monitor playback.
-            - Improved wallpaper browser toolbar layout with source selection, inline tag chips, favorites, and sorting controls.
-            - Added favorite toggle inside wallpaper details.
-            - Added direct wallpaper source links in wallpaper details.
-            - Improved wallpaper favorites view and empty-result handling.
-            - Added better localization coverage for wallpaper and management labels.
-            - Fixed the displayed installed version after automatic updates.
-            - Expanded shared Appearance controls for background, header, and icon styling.
-            - Improved management window spacing, dark controls, dropdowns, and sliders.
-            - Added layout management improvements for independent panel arrangements.
-            - Improved shortcut handling, removal dialogs, and app-managed shortcut storage.
-            - WITH NET10: single EXE with .NET 10 included; no additional runtime required.
-            - REQUIRES NET10: smaller single EXE; requires .NET 10 Desktop Runtime.
+          name: ${{ github.ref_name }}
+          body_path: .github/release-notes/${{ github.ref_name }}.md
           files: |
             My-Fancy-Fences-${{ github.ref_name }}-WITH-NET10-win-x64.exe
             My-Fancy-Fences-${{ github.ref_name }}-REQUIRES-NET10-win-x64.exe
