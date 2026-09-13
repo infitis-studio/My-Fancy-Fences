@@ -8,7 +8,6 @@ namespace My_Fancy_Fences;
 
 public static class ApplicationUpdater
 {
-    private const long BundledRuntimeSizeThreshold = 30L * 1024 * 1024;
     private static readonly HttpClient Client = CreateClient();
     private static readonly string UpdateRootDirectory = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -47,31 +46,13 @@ public static class ApplicationUpdater
         }
     }
 
-    public static UpdatePackageKind DetectCurrentPackageKind()
-    {
-        var executablePath = GetCurrentExecutablePath();
-        var directory = Path.GetDirectoryName(executablePath) ?? AppContext.BaseDirectory;
-        var executableSize = File.Exists(executablePath)
-            ? new FileInfo(executablePath).Length
-            : 0;
-
-        return executableSize >= BundledRuntimeSizeThreshold ||
-               File.Exists(Path.Combine(directory, "coreclr.dll"))
-            ? UpdatePackageKind.WithNet10
-            : UpdatePackageKind.RequiresNet10;
-    }
-
-    public static async Task<UpdatePackageKind> PrepareUpdateAsync(
+    public static async Task PrepareUpdateAsync(
         UpdateCheckResult update,
         IProgress<double>? progress = null,
         CancellationToken cancellationToken = default)
     {
-        var packageKind = DetectCurrentPackageKind();
-        var preferredMarker = "WITH-NET10";
-        var fallbackMarker = packageKind == UpdatePackageKind.WithNet10
-            ? "REQUIRES-NET10"
-            : "WITH-NET10";
-        var asset = FindAsset(update, preferredMarker) ?? FindAsset(update, fallbackMarker);
+        const string preferredMarker = "WITH-NET10";
+        var asset = FindAsset(update, preferredMarker);
         if (asset is null)
             throw new InvalidOperationException($"{LocalizationService.T("Wydanie nie zawiera pliku")} {preferredMarker}.");
 
@@ -125,7 +106,6 @@ public static class ApplicationUpdater
             PendingUpdatePath,
             JsonSerializer.Serialize(pendingUpdate, new JsonSerializerOptions { WriteIndented = true }));
         StartReplacementHelper(currentExecutable, downloadedExecutable, update.LatestTag);
-        return packageKind;
     }
 
     public static void RestartAfterCurrentProcessExits()
@@ -341,9 +321,3 @@ public sealed record PendingUpdate(
     [property: JsonPropertyName("downloadedPath")] string DownloadedPath,
     [property: JsonPropertyName("version")] string Version,
     [property: JsonPropertyName("createdAt")] DateTimeOffset CreatedAt);
-
-public enum UpdatePackageKind
-{
-    WithNet10,
-    RequiresNet10
-}

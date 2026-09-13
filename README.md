@@ -54,8 +54,7 @@ Wallpapers remain the property of their original owners. My Fancy Fences does no
 ### Requirements
 
 - Windows 10 or Windows 11
-- .NET 10 Desktop Runtime for the smaller `REQUIRES NET10` build
-- No additional runtime for the `WITH NET10` build
+- .NET 10 is included in the EXE; no separate runtime installation is needed
 
 ### Build and run
 

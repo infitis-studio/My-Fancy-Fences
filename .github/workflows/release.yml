@@ -62,27 +62,6 @@ jobs:
             "publish/with-net10/My Fancy Fences.exe" `
             "My-Fancy-Fences-${{ github.ref_name }}-WITH-NET10-win-x64.exe"
 
-      - name: Publish single-file application requiring .NET 10
-        shell: pwsh
-        run: |
-          $releaseVersion = "${{ github.ref_name }}".TrimStart("v", "V")
-          $assemblyVersion = "$releaseVersion.0"
-          dotnet publish "My Fancy Fences/My Fancy Fences.csproj" `
-            --configuration Release `
-            --runtime win-x64 `
-            --self-contained false `
-            --output "publish/requires-net10" `
-            -p:PublishSingleFile=true `
-            -p:DebugType=None `
-            -p:DebugSymbols=false `
-            -p:Version=$releaseVersion `
-            -p:AssemblyVersion=$assemblyVersion `
-            -p:FileVersion=$assemblyVersion `
-            -p:InformationalVersion=$releaseVersion
-          Move-Item `
-            "publish/requires-net10/My Fancy Fences.exe" `
-            "My-Fancy-Fences-${{ github.ref_name }}-REQUIRES-NET10-win-x64.exe"
-
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
@@ -91,4 +70,3 @@ jobs:
           body_path: .github/release-notes/${{ github.ref_name }}.md
           files: |
             My-Fancy-Fences-${{ github.ref_name }}-WITH-NET10-win-x64.exe
-            My-Fancy-Fences-${{ github.ref_name }}-REQUIRES-NET10-win-x64.exe

@@ -72,7 +72,6 @@ public static class UpdateService
                 ? releaseAssets
                 : new List<UpdateAsset>
             {
-                CreateAsset(tag, "REQUIRES-NET10", downloadBase),
                 CreateAsset(tag, "WITH-NET10", downloadBase)
             };
 
