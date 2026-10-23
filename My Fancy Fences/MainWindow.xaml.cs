@@ -99,6 +99,23 @@ public partial class MainWindow : Window
     private bool _isHeaderHidden;
     private double? _savedLeft;
     private double? _savedTop;
+    // Multi-monitor position (Left/Top in the saved records) and the independent single-monitor fallback.
+    private double? _multiLeft;
+    private double? _multiTop;
+    private string? _multiMonitor;
+    private double? _singleLeft;
+    private double? _singleTop;
+    private double? _multiWidth;
+    private double? _multiHeight;
+    private double? _singleWidth;
+    private double? _singleHeight;
+    private bool? _placementIsMulti;
+    private System.Windows.Threading.DispatcherTimer? _monitorWatchTimer;
+    private string _monitorSignature = string.Empty;
+    private double? _creatorSingleLeft;
+    private double? _creatorSingleTop;
+    private bool? _creatorPlacementIsMulti;
+    private System.Windows.Threading.DispatcherTimer? _displayChangeTimer;
     private static readonly string SettingsFilePath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "My Fancy Fences",
@@ -200,6 +217,9 @@ public partial class MainWindow : Window
                 if (!_skipSaveOnShutdown)
                     SaveSettings();
                 SystemEvents.PowerModeChanged -= SystemEvents_PowerModeChanged;
+                SystemEvents.DisplaySettingsChanged -= SystemEvents_DisplaySettingsChanged;
+                _displayChangeTimer?.Stop();
+                _monitorWatchTimer?.Stop();
                 UnregisterLayoutHotkeys();
                 RemoveTrayIcon();
                 _trayMessageSource?.RemoveHook(WindowMessageHook);
@@ -238,7 +258,10 @@ public partial class MainWindow : Window
 
             await Task.Delay(250);
             if (IsLoaded)
+            {
+                SeparateOverlappingFallbackPanels();
                 UpdateCreatorPanelVisibility();
+            }
 
             _ = CompactMemoryAfterStartupAsync();
         }
@@ -301,6 +324,8 @@ public partial class MainWindow : Window
             _trayWindowHandle = _trayMessageSource.Handle;
             _taskbarCreatedMessage = RegisterWindowMessage("TaskbarCreated");
             SystemEvents.PowerModeChanged += SystemEvents_PowerModeChanged;
+            SystemEvents.DisplaySettingsChanged += SystemEvents_DisplaySettingsChanged;
+            StartMonitorWatch();
             AddTrayIcon();
             RegisterLayoutHotkeys();
         }
@@ -671,29 +696,324 @@ public partial class MainWindow : Window
 
     private void PositionAtTopRight()
     {
-        var workArea = SystemParameters.WorkArea;
-        Left = _savedLeft.HasValue
-            ? Math.Clamp(_savedLeft.Value, workArea.Left, Math.Max(workArea.Left, workArea.Right - Width))
-            : workArea.Right - Width - 24;
-        Top = _savedTop.HasValue
-            ? Math.Clamp(_savedTop.Value, workArea.Top, Math.Max(workArea.Top, workArea.Bottom - Height))
-            : workArea.Top + 24;
+        if (_savedLeft.HasValue && _savedTop.HasValue)
+        {
+            _multiLeft ??= _savedLeft;
+            _multiTop ??= _savedTop;
+            ApplyProfilePosition();
+        }
+        else
+        {
+            var (left, top) = MonitorLayoutService.GetDefaultPosition(Width);
+            Left = left;
+            Top = top;
+            _placementIsMulti = MonitorLayoutService.IsMultiMonitor;
+        }
+
         SendToDesktopLevel();
     }
 
     private void PositionNewPanel()
     {
-        var workArea = SystemParameters.WorkArea;
+        if (_multiLeft.HasValue && _multiTop.HasValue)
+        {
+            ApplyProfilePosition();
+            SendToDesktopLevel();
+            return;
+        }
+
+        var workArea = MonitorLayoutService.GetPrimary().WorkArea;
         var offset = 34 * ((_newPanelIndex - 1) % 7);
-        Left = Math.Clamp(
+        var (left, top) = MonitorLayoutService.EnsureVisible(
             _savedLeft ?? workArea.Left + 70 + offset,
-            workArea.Left,
-            Math.Max(workArea.Left, workArea.Right - Width));
-        Top = Math.Clamp(
             _savedTop ?? workArea.Top + 70 + offset,
-            workArea.Top,
-            Math.Max(workArea.Top, workArea.Bottom - Height));
+            Width,
+            Height);
+        Left = left;
+        Top = top;
+        _placementIsMulti ??= MonitorLayoutService.IsMultiMonitor;
         SendToDesktopLevel();
+    }
+
+    private void ApplyPlacement(SavedPanelSettings settings)
+    {
+        _multiLeft = settings.Left;
+        _multiTop = settings.Top;
+        _multiMonitor = settings.MonitorDevice;
+        _singleLeft = settings.SingleLeft;
+        _singleTop = settings.SingleTop;
+        _multiWidth = settings.Width;
+        _multiHeight = settings.Height;
+        _singleWidth = settings.SingleWidth;
+        _singleHeight = settings.SingleHeight;
+        ApplyProfilePosition();
+    }
+
+    /// <summary>Moves the window to the stored position of the profile that matches the active monitors.</summary>
+    private void ApplyProfilePosition()
+    {
+        var multi = MonitorLayoutService.IsMultiMonitor;
+        var left = multi ? _multiLeft : (_singleLeft ?? _multiLeft);
+        var top = multi ? _multiTop : (_singleTop ?? _multiTop);
+        if (!left.HasValue || !top.HasValue)
+            return;
+
+        var width = multi ? _multiWidth : (_singleWidth ?? _multiWidth);
+        var height = multi ? _multiHeight : (_singleHeight ?? _multiHeight);
+        if (width.HasValue)
+            Width = Math.Max(MinWidth, width.Value);
+        if (height.HasValue)
+            Height = Math.Max(MinHeight, height.Value);
+
+        var (safeLeft, safeTop) = MonitorLayoutService.EnsureVisible(
+            left.Value,
+            top.Value,
+            Width,
+            Height,
+            multi ? _multiMonitor : null);
+        Left = safeLeft;
+        Top = safeTop;
+        _placementIsMulti = multi;
+    }
+
+    /// <summary>Stores the live window position into the profile it belongs to, leaving the other profile untouched.</summary>
+    private void SyncPlacement()
+    {
+        if (!IsLoaded ||
+            MonitorLayoutService.IsPositionSyncSuppressed ||
+            _placementIsMulti != MonitorLayoutService.IsMultiMonitor ||
+            double.IsNaN(Left) ||
+            double.IsNaN(Top))
+        {
+            return;
+        }
+
+        if (_placementIsMulti == true)
+        {
+            _multiLeft = Left;
+            _multiTop = Top;
+            _multiWidth = Width;
+            _multiHeight = Height;
+            _multiMonitor = MonitorLayoutService.FindMonitor(new Rect(Left, Top, Width, Height))?.DeviceName
+                ?? _multiMonitor;
+        }
+        else
+        {
+            _singleLeft = Left;
+            _singleTop = Top;
+            _singleWidth = Width;
+            _singleHeight = Height;
+        }
+    }
+
+    private IEnumerable<MainWindow> GetAllPanelWindows() =>
+        new[] { this }.Concat(_additionalPanels.Where(panel => panel.IsLoaded && !panel._isPendingCreation));
+
+    private void SyncCreatorPlacement()
+    {
+        if (_creatorWindow is null ||
+            !_creatorWindow.IsLoaded ||
+            MonitorLayoutService.IsPositionSyncSuppressed ||
+            _creatorPlacementIsMulti != MonitorLayoutService.IsMultiMonitor ||
+            double.IsNaN(_creatorWindow.Left) ||
+            double.IsNaN(_creatorWindow.Top))
+        {
+            return;
+        }
+
+        if (_creatorPlacementIsMulti == true)
+        {
+            _creatorLeft = _creatorWindow.Left;
+            _creatorTop = _creatorWindow.Top;
+        }
+        else
+        {
+            _creatorSingleLeft = _creatorWindow.Left;
+            _creatorSingleTop = _creatorWindow.Top;
+        }
+    }
+
+    private (double? Left, double? Top) GetCreatorProfilePosition()
+    {
+        if (MonitorLayoutService.IsMultiMonitor)
+            return (_creatorLeft, _creatorTop);
+
+        return (_creatorSingleLeft ?? _creatorLeft, _creatorSingleTop ?? _creatorTop);
+    }
+
+    private void ApplyCreatorProfilePosition()
+    {
+        if (_creatorWindow is null || !_creatorWindow.IsLoaded)
+            return;
+
+        var (left, top) = GetCreatorProfilePosition();
+        if (left.HasValue && top.HasValue)
+        {
+            var (safeLeft, safeTop) = MonitorLayoutService.EnsureVisible(
+                left.Value,
+                top.Value,
+                _creatorWindow.Width,
+                _creatorWindow.Height);
+            _creatorWindow.Left = safeLeft;
+            _creatorWindow.Top = safeTop;
+        }
+
+        _creatorPlacementIsMulti = MonitorLayoutService.IsMultiMonitor;
+    }
+
+    private void SystemEvents_DisplaySettingsChanged(object? sender, EventArgs e)
+    {
+        // Windows relocates windows itself while displays change; do not persist those moves.
+        MonitorLayoutService.IsPositionSyncSuppressed = true;
+        Dispatcher.BeginInvoke(() =>
+        {
+            _displayChangeTimer ??= new System.Windows.Threading.DispatcherTimer
+            {
+                Interval = TimeSpan.FromMilliseconds(1200)
+            };
+            _displayChangeTimer.Tick -= DisplayChangeTimer_Tick;
+            _displayChangeTimer.Tick += DisplayChangeTimer_Tick;
+            _displayChangeTimer.Stop();
+            _displayChangeTimer.Start();
+        });
+    }
+
+    private void DisplayChangeTimer_Tick(object? sender, EventArgs e)
+    {
+        _displayChangeTimer?.Stop();
+        try
+        {
+            ReapplyMonitorProfile();
+        }
+        catch (Exception ex)
+        {
+            LogMonitor("Reapply failed: " + ex);
+        }
+        finally
+        {
+            MonitorLayoutService.IsPositionSyncSuppressed = false;
+        }
+    }
+
+    /// <summary>
+    /// Safety net for display changes whose system event was missed or arrived before the
+    /// monitor list settled: compares the monitor layout every couple of seconds.
+    /// </summary>
+    private void StartMonitorWatch()
+    {
+        MonitorLayoutService.StartPowerProbe();
+        MonitorLayoutService.Refresh();
+        _monitorSignature = MonitorLayoutService.GetSignature();
+        LogMonitor("Monitors at start: " + _monitorSignature);
+        _monitorWatchTimer = new System.Windows.Threading.DispatcherTimer
+        {
+            Interval = TimeSpan.FromSeconds(2)
+        };
+        _monitorWatchTimer.Tick += (_, _) =>
+        {
+            if (MonitorLayoutService.IsPositionSyncSuppressed)
+                return;
+
+            MonitorLayoutService.Refresh();
+            var signature = MonitorLayoutService.GetSignature();
+            if (signature == _monitorSignature)
+                return;
+
+            LogMonitor($"Monitor change detected: {_monitorSignature} -> {signature}");
+            MonitorLayoutService.IsPositionSyncSuppressed = true;
+            try
+            {
+                ReapplyMonitorProfile();
+            }
+            catch (Exception ex)
+            {
+                LogMonitor("Reapply failed: " + ex);
+            }
+            finally
+            {
+                MonitorLayoutService.IsPositionSyncSuppressed = false;
+            }
+        };
+        _monitorWatchTimer.Start();
+    }
+
+    private static void LogMonitor(string message)
+    {
+        try
+        {
+            var directory = Path.GetDirectoryName(SettingsFilePath)!;
+            Directory.CreateDirectory(directory);
+            File.AppendAllText(
+                Path.Combine(directory, "startup.log"),
+                $"[{DateTimeOffset.Now:O}] {message}{Environment.NewLine}");
+        }
+        catch
+        {
+        }
+    }
+
+    /// <summary>Re-reads the monitor list and puts every panel at its saved position for the active profile.</summary>
+    private void ReapplyMonitorProfile()
+    {
+        MonitorLayoutService.Refresh();
+        _monitorSignature = MonitorLayoutService.GetSignature();
+        LogMonitor("Applying monitor profile: " + _monitorSignature);
+        foreach (var panel in GetAllPanelWindows())
+            panel.ApplyProfilePosition();
+
+        ApplyCreatorProfilePosition();
+        SeparateOverlappingFallbackPanels();
+    }
+
+    /// <summary>
+    /// When the single-monitor profile has no saved position yet, panels from the second monitor are
+    /// squeezed onto the primary one. Nudge those panels so they do not stack on top of each other.
+    /// </summary>
+    private void SeparateOverlappingFallbackPanels()
+    {
+        if (MonitorLayoutService.IsMultiMonitor)
+            return;
+
+        var placed = new List<Rect>();
+        var pending = new List<MainWindow>();
+        foreach (var panel in GetAllPanelWindows().Where(panel => panel.IsVisible))
+        {
+            if (panel._singleLeft.HasValue && panel._singleTop.HasValue)
+                placed.Add(new Rect(panel.Left, panel.Top, panel.Width, panel.Height));
+            else
+                pending.Add(panel);
+        }
+
+        var area = MonitorLayoutService.GetPrimary().WorkArea;
+        foreach (var panel in pending)
+        {
+            var left = panel.Left;
+            var top = panel.Top;
+            for (var attempt = 0; attempt < 40; attempt++)
+            {
+                var candidate = new Rect(left, top, panel.Width, panel.Height);
+                if (!placed.Any(rect => Overlaps(rect, candidate)))
+                    break;
+
+                top += 44;
+                if (top + panel.Height > area.Bottom)
+                {
+                    top = area.Top;
+                    left = Math.Min(left + 44, Math.Max(area.Left, area.Right - panel.Width));
+                }
+            }
+
+            var (safeLeft, safeTop) = MonitorLayoutService.EnsureVisible(left, top, panel.Width, panel.Height);
+            panel.Left = safeLeft;
+            panel.Top = safeTop;
+            placed.Add(new Rect(safeLeft, safeTop, panel.Width, panel.Height));
+        }
+
+        static bool Overlaps(Rect first, Rect second)
+        {
+            var overlap = Rect.Intersect(first, second);
+            return !overlap.IsEmpty && overlap.Width > 24 && overlap.Height > 24;
+        }
     }
 
     protected override void OnActivated(EventArgs e)
@@ -1320,17 +1640,66 @@ public partial class MainWindow : Window
             if (string.IsNullOrWhiteSpace(shortcutId))
                 return;
 
-            _shortcutIds.RemoveAll(id => string.Equals(id, shortcutId, StringComparison.OrdinalIgnoreCase));
-            IconCache.TryRemove(path, out _);
-            LoadDesktopItems();
-            UpdateActiveLayoutSnapshot();
-            SaveSettings();
+            RemoveDesktopItemFromPanel(path, shortcutId);
         }
         catch (Exception exception)
         {
             var error = new ConfirmationWindow(
                 LocalizationService.T("Nie udało się usunąć ikony"),
                 exception.Message,
+                LocalizationService.T("OK"))
+            {
+                Owner = this
+            };
+            error.ShowDialog();
+        }
+    }
+
+    private void RemoveDesktopItemFromPanel(string path, string shortcutId)
+    {
+        _shortcutIds.RemoveAll(id => string.Equals(id, shortcutId, StringComparison.OrdinalIgnoreCase));
+        IconCache.TryRemove(path, out _);
+        LoadDesktopItems();
+        UpdateActiveLayoutSnapshot();
+        SaveSettings();
+    }
+
+    private void MoveDesktopItemToDesktopMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        var path = _contextItemPath;
+        var shortcutId = _contextShortcutId;
+        var displayName = _contextItemName;
+        ItemActionsPopup.IsOpen = false;
+        _contextItemPath = null;
+        _contextShortcutId = null;
+        _contextItemName = null;
+
+        if (string.IsNullOrWhiteSpace(path) || string.IsNullOrWhiteSpace(shortcutId))
+            return;
+
+        try
+        {
+            var itemName = string.IsNullOrWhiteSpace(displayName)
+                ? Path.GetFileNameWithoutExtension(
+                    path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar))
+                : displayName;
+
+            // The icon leaves the panel only after the copy on the desktop succeeded.
+            ShortcutLibraryService.CopyToDesktop(path, itemName);
+            RemoveDesktopItemFromPanel(path, shortcutId);
+        }
+        catch (Exception exception)
+        {
+            var message = exception switch
+            {
+                UnauthorizedAccessException => LocalizationService.T("Brak uprawnień do zapisu na pulpicie."),
+                FileNotFoundException or DirectoryNotFoundException =>
+                    LocalizationService.T("Nie znaleziono pliku źródłowego ikony."),
+                _ => exception.Message
+            };
+            var error = new ConfirmationWindow(
+                LocalizationService.T("Nie udało się przenieść ikony na pulpit"),
+                message,
                 LocalizationService.T("OK"))
             {
                 Owner = this
@@ -1516,7 +1885,7 @@ public partial class MainWindow : Window
             : $"{paths.Length} {LocalizationService.T("elementy")}";
         var confirmation = new ConfirmationWindow(
             $"{LocalizationService.T("Dodać do panelu")} „{panelName}”?",
-            $"{LocalizationService.T("Czy dodać skrót do")} {itemDescription} {LocalizationService.T("w panelu")} „{panelName}”?\n\n{LocalizationService.T("Oryginalne pliki zostaną na swoim miejscu, a aplikacja zapisze tylko skrót w swoich danych.")}",
+            $"{LocalizationService.T("Czy dodać skrót do")} {itemDescription} {LocalizationService.T("w panelu")} „{panelName}”?",
             LocalizationService.T("Dodaj"),
             positiveConfirm: true)
         {
@@ -1536,8 +1905,8 @@ public partial class MainWindow : Window
         e.Effects = DragDropEffects.Link;
         var result = await Task.Run(() =>
         {
-            var ids = ShortcutLibraryService.AddShortcuts(paths, out var addFailures);
-            return (Ids: ids, Failures: addFailures);
+            var ids = ShortcutLibraryService.AddShortcuts(paths, out var addFailures, out var addedSources);
+            return (Ids: ids, Failures: addFailures, Added: addedSources);
         });
         foreach (var shortcutId in result.Ids)
         {
@@ -1548,6 +1917,7 @@ public partial class MainWindow : Window
         LoadDesktopItems();
         UpdateActiveLayoutSnapshot();
         SaveSettings();
+        RemoveAddedDesktopShortcuts(result.Added);
 
         if (failures.Count == 0)
             return;
@@ -1576,7 +1946,7 @@ public partial class MainWindow : Window
         if (dialog.ShowDialog(this) != true || dialog.FileNames.Length == 0)
             return;
 
-        var ids = ShortcutLibraryService.AddShortcuts(dialog.FileNames, out var failures);
+        var ids = ShortcutLibraryService.AddShortcuts(dialog.FileNames, out var failures, out var addedSources);
         foreach (var shortcutId in ids)
         {
             if (!_shortcutIds.Contains(shortcutId, StringComparer.OrdinalIgnoreCase))
@@ -1585,6 +1955,7 @@ public partial class MainWindow : Window
         LoadDesktopItems();
         UpdateActiveLayoutSnapshot();
         SaveSettings();
+        RemoveAddedDesktopShortcuts(addedSources);
 
         if (failures.Count == 0)
             return;
@@ -1599,6 +1970,53 @@ public partial class MainWindow : Window
             Owner = this
         };
         error.ShowDialog();
+    }
+
+    /// <summary>True for a shortcut file (.lnk, .url, .website) that sits directly on the current user's desktop.</summary>
+    private static bool IsShortcutOnDesktop(string path)
+    {
+        try
+        {
+            var extension = Path.GetExtension(path);
+            if (!File.Exists(path) ||
+                !(extension.Equals(".lnk", StringComparison.OrdinalIgnoreCase) ||
+                  extension.Equals(".url", StringComparison.OrdinalIgnoreCase) ||
+                  extension.Equals(".website", StringComparison.OrdinalIgnoreCase)))
+            {
+                return false;
+            }
+
+            var desktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+            var parent = Path.GetDirectoryName(Path.GetFullPath(path));
+            return !string.IsNullOrWhiteSpace(desktop) &&
+                   string.Equals(
+                       parent?.TrimEnd(Path.DirectorySeparatorChar),
+                       Path.GetFullPath(desktop).TrimEnd(Path.DirectorySeparatorChar),
+                       StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Once shortcuts from the desktop live in a panel, their desktop copies go to the Recycle Bin.
+    /// Real files and folders are never touched, only shortcut files that were added successfully.
+    /// </summary>
+    private static void RemoveAddedDesktopShortcuts(IEnumerable<string> addedSources)
+    {
+        foreach (var path in addedSources.Where(IsShortcutOnDesktop))
+        {
+            try
+            {
+                DeletePathToRecycleBin(path);
+            }
+            catch
+            {
+                // A shortcut that cannot be removed simply stays on the desktop.
+            }
+        }
     }
 
     private static bool IsAlreadyInPanelFolder(string path, string panelFolder)
@@ -1828,7 +2246,12 @@ public partial class MainWindow : Window
             _iconFontOpacity,
             _iconFontBold,
             _iconLetterSpacing,
-            isNewPanel);
+            isNewPanel,
+            _singleWidth,
+            _singleHeight,
+            _multiWidth,
+            _multiHeight,
+            MonitorLayoutService.IsMultiMonitor);
         settingsWindow.Loaded += (_, _) =>
         {
             settingsWindow.Topmost = true;
@@ -1930,6 +2353,7 @@ public partial class MainWindow : Window
             settingsWindow.FenceIconFontOpacity,
             settingsWindow.FenceIconFontBold,
             settingsWindow.FenceIconLetterSpacing);
+        StoreDimensionProfiles(settingsWindow);
         Width = settingsWindow.FenceWidth;
         Height = settingsWindow.FenceHeight;
         _sourceFolder = ShortcutLibraryService.ShortcutsDirectory;
@@ -1938,6 +2362,14 @@ public partial class MainWindow : Window
         LoadDesktopItems();
         SendToDesktopLevel();
         SaveSettings();
+    }
+
+    private void StoreDimensionProfiles(SettingsWindow settingsWindow)
+    {
+        _singleWidth = settingsWindow.FenceSingleWidth;
+        _singleHeight = settingsWindow.FenceSingleHeight;
+        _multiWidth = settingsWindow.FenceMultiWidth;
+        _multiHeight = settingsWindow.FenceMultiHeight;
     }
 
     private void OpenNewPanelSettings()
@@ -1967,7 +2399,12 @@ public partial class MainWindow : Window
             _iconFontOpacity,
             _iconFontBold,
             _iconLetterSpacing,
-            true);
+            true,
+            _singleWidth,
+            _singleHeight,
+            _multiWidth,
+            _multiHeight,
+            MonitorLayoutService.IsMultiMonitor);
 
         SizeChangedEventHandler panelSizeChanged = (_, _) =>
             settingsWindow.UpdatePanelDimensions(ActualWidth, ActualHeight);
@@ -2026,6 +2463,7 @@ public partial class MainWindow : Window
                 settingsWindow.FenceIconFontOpacity,
                 settingsWindow.FenceIconFontBold,
                 settingsWindow.FenceIconLetterSpacing);
+            StoreDimensionProfiles(settingsWindow);
             Width = settingsWindow.FenceWidth;
             Height = settingsWindow.FenceHeight;
             _sourceFolder = ShortcutLibraryService.ShortcutsDirectory;
@@ -2203,6 +2641,17 @@ public partial class MainWindow : Window
             ApplyIconSize(settings.IconSize > 0 ? settings.IconSize : 42);
             _savedLeft = settings.Left;
             _savedTop = settings.Top;
+            _multiLeft = settings.Left;
+            _multiTop = settings.Top;
+            _multiMonitor = settings.MonitorDevice;
+            _singleLeft = settings.SingleLeft;
+            _singleTop = settings.SingleTop;
+            _multiWidth = settings.Width;
+            _multiHeight = settings.Height;
+            _singleWidth = settings.SingleWidth;
+            _singleHeight = settings.SingleHeight;
+            _creatorSingleLeft = settings.CreatorSingleLeft;
+            _creatorSingleTop = settings.CreatorSingleTop;
             _showCreatorPanel = settings.ShowCreatorPanel;
             _showMainPanel = settings.ShowMainPanel ?? true;
             _creatorHideHeader = settings.CreatorHideHeader;
@@ -2361,25 +2810,27 @@ public partial class MainWindow : Window
             if (directory is not null)
                 Directory.CreateDirectory(directory);
 
+            SyncCreatorPlacement();
             UpdateActiveLayoutSnapshot();
+            SyncPlacement();
 
             var settings = new SavedFenceSettings(
                 TitleText.Text,
                 HeaderIcon.Kind,
-                Width,
-                Height,
+                _multiWidth ?? Width,
+                _multiHeight ?? Height,
                 ShortcutLibraryService.ShortcutsDirectory,
                 null,
                 $"#{_backgroundColor.R:X2}{_backgroundColor.G:X2}{_backgroundColor.B:X2}",
                 _backgroundOpacity,
                 _isHeaderHidden,
                 _iconSize,
-                Left,
-                Top,
+                _multiLeft ?? Left,
+                _multiTop ?? Top,
                 _showCreatorPanel,
                 _creatorWindow?.IsHeaderHidden ?? _creatorHideHeader,
-                _creatorWindow?.Left ?? _creatorLeft,
-                _creatorWindow?.Top ?? _creatorTop,
+                _creatorLeft,
+                _creatorTop,
                 CreatorPanelWidth,
                 CreatorPanelHeight,
                 _creatorWindow is null
@@ -2406,7 +2857,14 @@ public partial class MainWindow : Window
                 _useDoubleClickToOpen,
                 LocalizationService.CurrentLanguage,
                 null,
-                null);
+                null,
+                _singleLeft,
+                _singleTop,
+                _multiMonitor,
+                _creatorSingleLeft,
+                _creatorSingleTop,
+                _singleWidth,
+                _singleHeight);
 
             if (File.Exists(SettingsFilePath))
             {
@@ -2517,7 +2975,14 @@ public partial class MainWindow : Window
         bool? UseDoubleClickToOpen,
         string? Language,
         string? ActiveLayoutId,
-        List<SavedLayoutSettings>? Layouts);
+        List<SavedLayoutSettings>? Layouts,
+        double? SingleLeft = null,
+        double? SingleTop = null,
+        string? MonitorDevice = null,
+        double? CreatorSingleLeft = null,
+        double? CreatorSingleTop = null,
+        double? SingleWidth = null,
+        double? SingleHeight = null);
 
     private sealed record SavedLayoutSettings(
         string Id,
@@ -2565,21 +3030,32 @@ public partial class MainWindow : Window
         bool? IconFontBold,
         double? IconLetterSpacing,
         bool? HideFolders,
-        bool? IsVisible);
+        bool? IsVisible,
+        double? SingleLeft = null,
+        double? SingleTop = null,
+        string? MonitorDevice = null,
+        double? SingleWidth = null,
+        double? SingleHeight = null);
 
-    private SavedPanelSettings CapturePanelSettings() => new(
+    private SavedPanelSettings CapturePanelSettings()
+    {
+        SyncPlacement();
+        return CreatePanelSettingsRecord();
+    }
+
+    private SavedPanelSettings CreatePanelSettingsRecord() => new(
         TitleText.Text,
         HeaderIcon.Kind,
-        Width,
-        Height,
+        _multiWidth ?? Width,
+        _multiHeight ?? Height,
         _sourceFolder,
         _shortcutIds.ToList(),
         $"#{_backgroundColor.R:X2}{_backgroundColor.G:X2}{_backgroundColor.B:X2}",
         _backgroundOpacity,
         _isHeaderHidden,
         _iconSize,
-        Left,
-        Top,
+        _multiLeft ?? Left,
+        _multiTop ?? Top,
         _fontFamilyName,
         _borderRadius,
         _borderThickness,
@@ -2595,7 +3071,12 @@ public partial class MainWindow : Window
         _iconFontBold,
         _iconLetterSpacing,
         _hideFolders,
-        IsVisible);
+        IsVisible,
+        _singleLeft,
+        _singleTop,
+        _multiMonitor,
+        _singleWidth,
+        _singleHeight);
 
     private void ApplySavedPanelSettings(SavedPanelSettings settings)
     {
@@ -2608,9 +3089,7 @@ public partial class MainWindow : Window
         _hideFolders = settings.HideFolders ?? false;
         _savedLeft = settings.Left;
         _savedTop = settings.Top;
-        var workArea = SystemParameters.WorkArea;
-        Left = Math.Clamp(settings.Left, workArea.Left, Math.Max(workArea.Left, workArea.Right - Width));
-        Top = Math.Clamp(settings.Top, workArea.Top, Math.Max(workArea.Top, workArea.Bottom - Height));
+        ApplyPlacement(settings);
         ApplyIconSize(settings.IconSize > 0 ? settings.IconSize : 42);
         ApplyPanelFont(settings.FontFamilyName);
         ApplyHeaderPresentation(settings.HideHeader);
@@ -3004,12 +3483,14 @@ public partial class MainWindow : Window
         {
             if (_creatorWindow is null)
             {
+                var creatorPosition = GetCreatorProfilePosition();
+                _creatorPlacementIsMulti = MonitorLayoutService.IsMultiMonitor;
                 _creatorWindow = new CreatorWindow(
                     _creatorHideHeader,
                     CreatorPanelWidth,
                     CreatorPanelHeight,
-                    _creatorLeft,
-                    _creatorTop,
+                    creatorPosition.Left,
+                    creatorPosition.Top,
                     _creatorBackgroundColor,
                     _creatorBackgroundOpacity);
                 _creatorWindow.CreatorStateChanged += (_, _) => SaveSettings();

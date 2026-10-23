@@ -62,6 +62,10 @@ jobs:
             "publish/with-net10/My Fancy Fences.exe" `
             "My-Fancy-Fences-${{ github.ref_name }}-WITH-NET10-win-x64.exe"
 
+      - name: Build Windows installer
+        shell: pwsh
+        run: ./installer/Build-Installer.ps1
+
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
@@ -70,3 +74,4 @@ jobs:
           body_path: .github/release-notes/${{ github.ref_name }}.md
           files: |
             My-Fancy-Fences-${{ github.ref_name }}-WITH-NET10-win-x64.exe
+            new-build/My-Fancy-Fences-${{ github.ref_name }}-Setup-win-x64.exe

@@ -78,6 +78,19 @@ public static class LiveWallpaperService
 
     public static void Shutdown() => Stop();
 
+    public static void ClearState()
+    {
+        try
+        {
+            if (File.Exists(StateFilePath))
+                File.Delete(StateFilePath);
+        }
+        catch
+        {
+            // Clearing state is best-effort only.
+        }
+    }
+
     private static void SaveLastLiveWallpaper(Uri videoUri)
     {
         try

@@ -49,11 +49,19 @@ public static class ShortcutLibraryService
         }
     }
 
-    public static List<string> AddShortcuts(IEnumerable<string> sourcePaths, out List<string> failures)
+    public static List<string> AddShortcuts(IEnumerable<string> sourcePaths, out List<string> failures) =>
+        AddShortcuts(sourcePaths, out failures, out _);
+
+    /// <summary>Same as above; <paramref name="addedSources"/> lists the source paths that were added successfully.</summary>
+    public static List<string> AddShortcuts(
+        IEnumerable<string> sourcePaths,
+        out List<string> failures,
+        out List<string> addedSources)
     {
         Directory.CreateDirectory(ShortcutsDirectory);
         var shortcutIds = new List<string>();
         failures = [];
+        addedSources = [];
 
         foreach (var sourcePath in sourcePaths)
         {
@@ -75,6 +83,7 @@ public static class ShortcutLibraryService
 
                 SaveShortcutDisplayName(shortcutId, GetDisplayName(sourcePath));
                 shortcutIds.Add(shortcutId);
+                addedSources.Add(sourcePath);
             }
             catch
             {
@@ -84,6 +93,43 @@ public static class ShortcutLibraryService
         }
 
         return shortcutIds;
+    }
+
+    /// <summary>
+    /// Puts a copy of the library item on the current user's desktop, named after its visible name.
+    /// Existing desktop items are never overwritten: "Name.lnk" becomes "Name (1).lnk", "Name (2).lnk", ...
+    /// </summary>
+    public static string CopyToDesktop(string sourcePath, string displayName)
+    {
+        var desktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+        if (string.IsNullOrWhiteSpace(desktop) || !Directory.Exists(desktop))
+            throw new DirectoryNotFoundException("The desktop folder could not be found.");
+
+        var isFolder = Directory.Exists(sourcePath);
+        if (!isFolder && !File.Exists(sourcePath))
+            throw new FileNotFoundException("The source item no longer exists.", sourcePath);
+
+        var invalid = Path.GetInvalidFileNameChars();
+        var baseName = new string(displayName.Select(character => invalid.Contains(character) ? '_' : character).ToArray())
+            .Trim()
+            .TrimEnd('.');
+        if (string.IsNullOrWhiteSpace(baseName))
+            baseName = "Shortcut";
+
+        var extension = isFolder ? ".lnk" : Path.GetExtension(sourcePath);
+        if (string.IsNullOrWhiteSpace(extension))
+            extension = ".lnk";
+
+        var destination = Path.Combine(desktop, baseName + extension);
+        for (var suffix = 1; File.Exists(destination) || Directory.Exists(destination); suffix++)
+            destination = Path.Combine(desktop, $"{baseName} ({suffix}){extension}");
+
+        if (isFolder)
+            CreateWindowsShortcut(sourcePath, destination);
+        else
+            File.Copy(sourcePath, destination, overwrite: false);
+
+        return destination;
     }
 
     public static List<string> ImportFolder(string? folder)

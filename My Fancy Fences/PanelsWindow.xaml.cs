@@ -129,6 +129,7 @@ public partial class PanelsWindow : Window
         _layoutShortcutAssignments = layoutShortcuts;
         _committedAppearance = CreateAppearanceStateFromFields();
         InitializeComponent();
+        StartRainbowAnimation();
         Icon = AppIconProvider.Image;
         StateChanged += Window_StateChanged;
         ApplyInitialWindowBounds();
@@ -1038,6 +1039,121 @@ public partial class PanelsWindow : Window
         return KeepAboveTaskbar(
             SystemParameters.WorkArea,
             new Rect(0, 0, SystemParameters.PrimaryScreenWidth, SystemParameters.PrimaryScreenHeight));
+    }
+
+    private const int RainbowStopCount = 49;
+    private const double RainbowCycleSeconds = 40;
+    private readonly Stopwatch _rainbowClock = new();
+    private readonly GradientStop[] _rainbowStops = new GradientStop[RainbowStopCount];
+    private DispatcherTimer? _rainbowTimer;
+
+    /// <summary>
+    /// The bar shows half a colour cycle (about three colours) across its width. Instead of sliding a
+    /// huge gradient, the stop colours are recomputed a few times per second, so the brush always
+    /// covers exactly the bar and there is no tile or loop point where a seam could appear.
+    /// </summary>
+    private void StartRainbowAnimation()
+    {
+        var brush = new LinearGradientBrush
+        {
+            StartPoint = new Point(0, 0),
+            EndPoint = new Point(1, 0)
+        };
+        for (var i = 0; i < RainbowStopCount; i++)
+        {
+            _rainbowStops[i] = new GradientStop(Colors.Transparent, i / (double)(RainbowStopCount - 1));
+            brush.GradientStops.Add(_rainbowStops[i]);
+        }
+
+        RainbowAccentBar.Background = brush;
+        RainbowAccentBar.Child = new Border
+        {
+            IsHitTestVisible = false,
+            Background = CreateDitherBrush()
+        };
+        _rainbowClock.Start();
+        UpdateRainbowColors();
+
+        _rainbowTimer = new DispatcherTimer(DispatcherPriority.Background)
+        {
+            Interval = TimeSpan.FromMilliseconds(50)
+        };
+        _rainbowTimer.Tick += (_, _) => UpdateRainbowColors();
+        IsVisibleChanged += (_, _) =>
+        {
+            if (IsVisible)
+                _rainbowTimer.Start();
+            else
+                _rainbowTimer.Stop();
+        };
+        Closed += (_, _) => _rainbowTimer.Stop();
+    }
+
+    /// <summary>
+    /// Barely visible black and white noise over the gradient. A slow gradient has 8-bit steps of one
+    /// level every few pixels, which reads as a faint stripe; noise of about two levels breaks those
+    /// edges up (dithering) without changing how the colours look.
+    /// </summary>
+    private static ImageBrush CreateDitherBrush()
+    {
+        const int width = 64;
+        const int height = 4;
+        var pixels = new byte[width * height * 4];
+        var random = new Random(7);
+        for (var i = 0; i < width * height; i++)
+        {
+            var alpha = (byte)random.Next(2, 7);
+            var value = random.Next(2) == 0 ? alpha : (byte)0;
+            pixels[i * 4] = value;
+            pixels[i * 4 + 1] = value;
+            pixels[i * 4 + 2] = value;
+            pixels[i * 4 + 3] = alpha;
+        }
+
+        var bitmap = System.Windows.Media.Imaging.BitmapSource.Create(
+            width,
+            height,
+            96,
+            96,
+            PixelFormats.Pbgra32,
+            null,
+            pixels,
+            width * 4);
+        bitmap.Freeze();
+
+        var brush = new ImageBrush(bitmap)
+        {
+            TileMode = TileMode.Tile,
+            ViewportUnits = BrushMappingMode.Absolute,
+            Viewport = new Rect(0, 0, width, height),
+            Stretch = Stretch.Fill
+        };
+        RenderOptions.SetBitmapScalingMode(brush, BitmapScalingMode.NearestNeighbor);
+        return brush;
+    }
+
+    private void UpdateRainbowColors()
+    {
+        var phase = _rainbowClock.Elapsed.TotalSeconds / RainbowCycleSeconds % 1.0;
+        for (var i = 0; i < RainbowStopCount; i++)
+        {
+            var t = phase + 0.5 * i / (RainbowStopCount - 1);
+            _rainbowStops[i].Color = CosinePaletteColor(t);
+        }
+    }
+
+    /// <summary>
+    /// Each channel is a shifted cosine, so every channel changes smoothly with no kinks at all
+    /// (a plain HSV hue sweep changes slope at red, yellow, green, ... and shows a faint band there).
+    /// </summary>
+    private static Color CosinePaletteColor(double t)
+    {
+        static byte Channel(double t, double shift) =>
+            (byte)Math.Round((0.64 + 0.30 * Math.Cos(2 * Math.PI * (t - shift))) * 255);
+
+        // 80% opacity is part of the colour: a semi-transparent element would be drawn through an
+        // extra offscreen layer, which is a likely source of small glitches while the bar animates.
+        return Color.FromArgb(0xFF, Channel(t, 0), Channel(t, 1.0 / 3), Channel(t, 2.0 / 3));
     }
 
     private void SetWindowToCurrentMonitorSafeArea()

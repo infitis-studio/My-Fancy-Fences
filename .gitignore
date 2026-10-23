@@ -5,6 +5,7 @@
 **/obj/
 build-*/
 build/
+new-build/
 publish/
 publish-update/
 Download Stats/publish-fixed/

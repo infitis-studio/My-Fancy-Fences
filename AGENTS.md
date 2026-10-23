@@ -5,4 +5,4 @@
 - Use Added only for a feature introduced in that release. Describe subsequent changes as improvements or fixes; never copy a cumulative feature list into a new release.
 - Update the project version to match the release. Commit the release notes before tagging. The release workflow requires the matching notes file.
 - Check the published title, notes, assets, and latest-release designation after publishing. Preserve prerelease status unless explicitly changing the release channel.
-- Publish only the self-contained Windows x64 EXE with .NET 10 included. Release notes and documentation must describe this single download.
+- Provide the Windows x64 Setup EXE built with `installer/Build-Installer.ps1`. Setup installs the application and downloads Microsoft .NET 10 Desktop Runtime only when missing or when repair is selected. Keep the bundled portable EXE for compatibility with existing portable installations and their updater; do not publish the installer payload as a separate download.

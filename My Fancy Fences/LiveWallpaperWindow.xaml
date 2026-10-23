@@ -8,7 +8,10 @@
         ShowActivated="False"
         AllowsTransparency="False"
         Background="Black"
-        Topmost="False">
+        Topmost="False"
+        UseLayoutRounding="True"
+        SnapsToDevicePixels="True"
+        SizeToContent="Manual">
     <Grid Background="Black">
         <wv2:WebView2 x:Name="WallpaperWebView"
                       DefaultBackgroundColor="Black"/>

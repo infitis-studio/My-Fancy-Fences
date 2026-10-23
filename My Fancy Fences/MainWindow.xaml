@@ -287,6 +287,46 @@
                                           Opacity="0.38"
                                           Color="#FF000000"/>
                     </Border.Effect>
+                    <StackPanel>
+                    <Button Height="38"
+                            Padding="11,0"
+                            Foreground="#FFE5E7EB"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            Cursor="Hand"
+                            HorizontalContentAlignment="Stretch"
+                            Click="MoveDesktopItemToDesktopMenuItem_Click">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Border x:Name="ActionBackground"
+                                        Padding="{TemplateBinding Padding}"
+                                        CornerRadius="7"
+                                        Background="{TemplateBinding Background}">
+                                    <ContentPresenter HorizontalAlignment="Stretch"
+                                                      VerticalAlignment="Center"/>
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="ActionBackground" Property="Background" Value="#22FFFFFF"/>
+                                    </Trigger>
+                                    <Trigger Property="IsPressed" Value="True">
+                                        <Setter TargetName="ActionBackground" Property="Background" Value="#36FFFFFF"/>
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Button.Template>
+                        <StackPanel Orientation="Horizontal">
+                            <iconPacks:PackIconLucide Kind="Monitor"
+                                                       Width="16"
+                                                       Height="16"
+                                                       Margin="0,0,10,0"
+                                                       Foreground="#FF93C5FD"/>
+                            <TextBlock Text="Przenieś na pulpit"
+                                       FontSize="13"
+                                       FontWeight="SemiBold"
+                                       VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
                     <Button Height="38"
                             Padding="11,0"
                             Foreground="#FFFCA5A5"
@@ -326,6 +366,7 @@
                                        VerticalAlignment="Center"/>
                         </StackPanel>
                     </Button>
+                    </StackPanel>
                 </Border>
             </Popup>
 

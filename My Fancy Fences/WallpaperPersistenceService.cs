@@ -95,6 +95,7 @@ public static class WallpaperPersistenceService
             0,
             targetPath,
             SpifUpdateIniFile | SpifSendWinIniChange);
+        LiveWallpaperService.ClearState();
     }
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]

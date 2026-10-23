@@ -51,8 +51,9 @@ public static class ApplicationUpdater
         IProgress<double>? progress = null,
         CancellationToken cancellationToken = default)
     {
-        const string preferredMarker = "WITH-NET10";
-        var asset = FindAsset(update, preferredMarker);
+        var installedWithSetup = File.Exists(Path.Combine(AppContext.BaseDirectory, "installer-managed"));
+        var preferredMarker = installedWithSetup ? "-Setup-" : "WITH-NET10";
+        var asset = FindAsset(update, preferredMarker) ?? FindAsset(update, "WITH-NET10");
         if (asset is null)
             throw new InvalidOperationException($"{LocalizationService.T("Wydanie nie zawiera pliku")} {preferredMarker}.");
 
@@ -64,7 +65,8 @@ public static class ApplicationUpdater
         }
 
         var currentExecutable = GetCurrentExecutablePath();
-        EnsureTargetDirectoryIsWritable(currentExecutable);
+        if (!asset.Name.Contains("-Setup-", StringComparison.OrdinalIgnoreCase))
+            EnsureTargetDirectoryIsWritable(currentExecutable);
 
         Directory.CreateDirectory(UpdateRootDirectory);
         SafeDelete(PendingUpdatePath);
@@ -170,6 +172,12 @@ public static class ApplicationUpdater
 
     private static void StartReplacementHelper(string targetPath, string downloadedPath, string? version = null)
     {
+        if (Path.GetFileName(downloadedPath).Contains("-Setup-", StringComparison.OrdinalIgnoreCase))
+        {
+            StartInstallerHelper(targetPath, downloadedPath);
+            return;
+        }
+
         var scriptPath = Path.Combine(
             Path.GetDirectoryName(downloadedPath)!,
             "install-update.ps1");
@@ -246,6 +254,40 @@ public static class ApplicationUpdater
             """;
         File.WriteAllText(scriptPath, script);
 
+        StartPowerShellScript(scriptPath);
+    }
+
+    private static void StartInstallerHelper(string targetPath, string installerPath)
+    {
+        var scriptPath = Path.Combine(Path.GetDirectoryName(installerPath)!, "run-installer.ps1");
+        var script = $$"""
+            $ErrorActionPreference = 'Stop'
+            $target = '{{EscapePowerShell(targetPath)}}'
+            $installer = '{{EscapePowerShell(installerPath)}}'
+            $pending = '{{EscapePowerShell(PendingUpdatePath)}}'
+            $log = '{{EscapePowerShell(UpdateLogPath)}}'
+            $restartRequired = $false
+            try {
+                Wait-Process -Id {{Environment.ProcessId}} -ErrorAction SilentlyContinue
+                $directory = [System.IO.Path]::GetDirectoryName($target)
+                $modeFile = Join-Path $directory 'installer-managed'
+                $mode = if ((Get-Content -LiteralPath $modeFile -Raw).Trim() -eq 'allusers') { '/ALLUSERS' } else { '/CURRENTUSER' }
+                $arguments = '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /RESTARTEXITCODE=3010 ' + $mode + ' /DIR="' + $directory + '"'
+                $process = Start-Process -FilePath $installer -ArgumentList $arguments -WindowStyle Hidden -Wait -PassThru
+                if ($process.ExitCode -ne 0 -and $process.ExitCode -ne 3010) {
+                    throw "Installer failed with exit code $($process.ExitCode)"
+                }
+                $restartRequired = $process.ExitCode -eq 3010
+                Remove-Item -LiteralPath $pending -Force -ErrorAction SilentlyContinue
+                Remove-Item -LiteralPath $installer -Force -ErrorAction SilentlyContinue
+            }
+            catch {
+                Add-Content -LiteralPath $log -Value "[$([DateTime]::Now.ToString('s'))] $($_.Exception.Message)"
+            }
+            if (-not $restartRequired -and (Test-Path -LiteralPath $target)) { Start-Process -FilePath $target }
+            Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue
+            """;
+        File.WriteAllText(scriptPath, script);
         StartPowerShellScript(scriptPath);
     }
 

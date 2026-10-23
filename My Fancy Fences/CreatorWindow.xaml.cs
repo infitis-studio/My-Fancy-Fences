@@ -55,13 +55,14 @@ public partial class CreatorWindow : Window
 
         Loaded += (_, _) =>
         {
-            var area = SystemParameters.WorkArea;
-            Left = left.HasValue
-                ? Math.Clamp(left.Value, area.Left, Math.Max(area.Left, area.Right - Width))
-                : area.Right - Width - 24;
-            Top = top.HasValue
-                ? Math.Clamp(top.Value, area.Top, Math.Max(area.Top, area.Bottom - Height))
-                : area.Top + 24;
+            if (left.HasValue && top.HasValue)
+            {
+                (Left, Top) = MonitorLayoutService.EnsureVisible(left.Value, top.Value, Width, Height);
+            }
+            else
+            {
+                (Left, Top) = MonitorLayoutService.GetDefaultPosition(Width);
+            }
             ApplyHeader();
             _ = StabilizeDesktopLevelAsync();
         };

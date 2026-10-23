@@ -637,9 +637,15 @@ public partial class WallpaperDetailsWindow : Window
                 windowsWallpaperPath,
                 SpifUpdateIniFile | SpifSendWinIniChange);
 
-            StatusText.Text = success
-                ? LocalizationService.T("Ustawiono jako tapetę.")
-                : LocalizationService.T("Windows nie pozwolił ustawić tapety.");
+            if (success)
+            {
+                LiveWallpaperService.ClearState();
+                StatusText.Text = LocalizationService.T("Ustawiono jako tapetę.");
+            }
+            else
+            {
+                StatusText.Text = LocalizationService.T("Windows nie pozwolił ustawić tapety.");
+            }
         }
         catch
         {

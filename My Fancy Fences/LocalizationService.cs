@@ -1,4 +1,4 @@
-using System.Collections;
+﻿using System.Collections;
 using System.Globalization;
 using System.IO;
 using System.Text.Json.Nodes;
@@ -326,6 +326,12 @@ public static class LocalizationService
         Add("Wielkość ikon", "Icon size", "Symbolgröße", "Taille des icônes", "Tamaño de iconos", "Dimensione icone", "Tamanho dos ícones", "Pictogramgrootte", "Velikost ikon", "Розмір значків", "Размер значков", "图标大小");
         Add("Szerokość", "Width", "Breite", "Largeur", "Anchura", "Larghezza", "Largura", "Breedte", "Šířka", "Ширина", "Ширина", "宽度");
         Add("Wysokość", "Height", "Höhe", "Hauteur", "Altura", "Altezza", "Altura", "Hoogte", "Výška", "Висота", "Высота", "高度");
+        Add("Pojedynczy monitor", "Single monitor", "Einzelner Monitor", "Un seul écran", "Un solo monitor", "Monitor singolo", "Monitor único", "Enkele monitor", "Jeden monitor", "Один монітор", "Один монитор", "单显示器");
+        Add("Wiele monitorów", "Multiple monitors", "Mehrere Monitore", "Plusieurs écrans", "Varios monitores", "Più monitor", "Vários monitores", "Meerdere monitoren", "Více monitorů", "Кілька моніторів", "Несколько мониторов", "多显示器");
+        Add("Przenieś na pulpit", "Move to desktop", "Auf Desktop verschieben", "Déplacer vers le bureau", "Mover al escritorio", "Sposta sul desktop", "Mover para a área de trabalho", "Naar bureaublad verplaatsen", "Přesunout na plochu", "Перемістити на робочий стіл", "Переместить на рабочий стол", "移到桌面");
+        Add("Nie udało się przenieść ikony na pulpit", "Couldn't move the icon to the desktop", "Das Symbol konnte nicht auf den Desktop verschoben werden", "Impossible de déplacer l'icône vers le bureau", "No se pudo mover el icono al escritorio", "Impossibile spostare l'icona sul desktop", "Não foi possível mover o ícone para a área de trabalho", "Kan het pictogram niet naar het bureaublad verplaatsen", "Ikonu se nepodařilo přesunout na plochu", "Не вдалося перемістити значок на робочий стіл", "Не удалось переместить значок на рабочий стол", "无法将图标移到桌面");
+        Add("Brak uprawnień do zapisu na pulpicie.", "You don't have permission to write to the desktop.", "Keine Berechtigung zum Schreiben auf dem Desktop.", "Vous n'avez pas l'autorisation d'écrire sur le bureau.", "No tienes permiso para escribir en el escritorio.", "Non hai il permesso di scrivere sul desktop.", "Você não tem permissão para gravar na área de trabalho.", "Je hebt geen toestemming om naar het bureaublad te schrijven.", "Nemáte oprávnění k zápisu na plochu.", "Немає дозволу на запис на робочий стіл.", "Нет разрешения на запись на рабочий стол.", "没有写入桌面的权限。");
+        Add("Nie znaleziono pliku źródłowego ikony.", "The icon's source file wasn't found.", "Die Quelldatei des Symbols wurde nicht gefunden.", "Le fichier source de l'icône est introuvable.", "No se encontró el archivo de origen del icono.", "File di origine dell'icona non trovato.", "O arquivo de origem do ícone não foi encontrado.", "Het bronbestand van het pictogram is niet gevonden.", "Zdrojový soubor ikony nebyl nalezen.", "Вихідний файл значка не знайдено.", "Исходный файл значка не найден.", "找不到图标的源文件。");
         Add("Folder z elementami", "Items folder", "Ordner mit Elementen", "Dossier des éléments", "Carpeta de elementos", "Cartella elementi", "Pasta de itens", "Itemmap", "Složka položek", "Папка елементів", "Папка элементов", "项目文件夹");
         Add("Ukryj foldery", "Hide folders", "Ordner ausblenden", "Masquer les dossiers", "Ocultar carpetas", "Nascondi cartelle", "Ocultar pastas", "Mappen verbergen", "Skrýt složky", "Приховати папки", "Скрыть папки", "隐藏文件夹");
         Add("Zaokrąglenie", "Corner radius", "Eckenradius", "Arrondi", "Radio de esquina", "Raggio angoli", "Raio dos cantos", "Hoekradius", "Poloměr rohů", "Заокруглення", "Скругление", "圆角");
@@ -490,7 +496,6 @@ public static class LocalizationService
         AddEnglishFallback("Nie znaleziono tapet dla wybranych filtrów.", "No wallpapers found for the selected filters.");
         AddEnglishFallback("Obecne ustawienia zostaną zastąpione zawartością archiwum. Przed zmianą powstanie kopia zapasowa, a aplikacja uruchomi się ponownie.", "Current settings will be replaced with the archive contents. A backup will be created before the change, and the app will restart.");
         AddEnglishFallback("OK", "OK");
-        AddEnglishFallback("Oryginalne pliki zostaną na swoim miejscu, a aplikacja zapisze tylko skrót w swoich danych.", "Original files will stay in place, and the app will save only a shortcut in its data.");
         AddEnglishFallback("Panel zostanie trwale usunięty wraz z jego zapisanymi ustawieniami. Tej operacji nie można cofnąć.", "The panel will be permanently deleted with its saved settings. This action cannot be undone.");
         AddEnglishFallback("Pobieranie aktualizacji…", "Downloading update…");
         AddEnglishFallback("Pobieranie tapety...", "Downloading wallpaper...");

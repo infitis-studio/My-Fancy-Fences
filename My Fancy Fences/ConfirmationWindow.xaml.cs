@@ -27,7 +27,10 @@ public partial class ConfirmationWindow : Window
         if (positiveConfirm)
         {
             Width = 440;
-            Height = Math.Max(260, Height);
+            // Header (46) + footer (58) + margins (36) plus one 20px line per ~52 characters of the message.
+            MinHeight = 170;
+            var lines = Math.Max(1, message.Split('\n').Sum(line => Math.Ceiling(line.Length / 52.0)));
+            Height = Math.Clamp(146 + 20 * lines, 190, 300);
             DialogIcon.Kind = confirmText.Contains("Dodaj", StringComparison.CurrentCultureIgnoreCase)
                 ? PackIconLucideKind.Plus
                 : PackIconLucideKind.Download;

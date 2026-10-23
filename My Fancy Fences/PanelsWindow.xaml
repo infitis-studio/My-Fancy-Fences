@@ -563,7 +563,21 @@
                 </Grid>
             </Border>
 
-            <Grid x:Name="ManagementContentGrid" Grid.Row="1" Margin="22,16,18,12">
+            <Border x:Name="RainbowAccentBar"
+                    Grid.Row="1"
+                    Height="2"
+                    VerticalAlignment="Top"
+                    SnapsToDevicePixels="True"
+                    UseLayoutRounding="True"
+                    IsHitTestVisible="False"
+                    Panel.ZIndex="10">
+                <Border.Effect>
+                    <BlurEffect Radius="2" KernelType="Gaussian" RenderingBias="Quality"/>
+                </Border.Effect>
+                <!-- Colours are driven from code (PanelsWindow.StartRainbowAnimation). -->
+            </Border>
+
+            <Grid x:Name="ManagementContentGrid" Grid.Row="1" Margin="22,13,18,12">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
@@ -867,7 +881,7 @@
                         </Button>
                     </Grid>
 
-                    <Grid x:Name="WallpaperTabContent" Margin="-22,-15,-18,-12" Visibility="Collapsed">
+                    <Grid x:Name="WallpaperTabContent" Margin="-22,-12,-18,-12" Visibility="Collapsed">
                         <ContentControl x:Name="WallpaperContentHost"/>
                     </Grid>
 

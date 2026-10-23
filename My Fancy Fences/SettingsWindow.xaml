@@ -441,6 +441,114 @@
                 </Setter.Value>
             </Setter>
         </Style>
+        <Style x:Key="DimensionModeToggleStyle" TargetType="RadioButton">
+            <Setter Property="Height" Value="30"/>
+            <Setter Property="MinWidth" Value="150"/>
+            <Setter Property="Padding" Value="16,0"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Foreground" Value="#FFA9A2A5"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="PillBorder"
+                                CornerRadius="15"
+                                Padding="{TemplateBinding Padding}"
+                                Background="{TemplateBinding Background}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="PillBorder" Property="Background" Value="#FF3A3A3F"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="PillBorder" Property="Background" Value="#FF2F7DF6"/>
+                                <Setter Property="Foreground" Value="White"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <!-- Same look as the default slider, but the active track, thumb and focus ring use Foreground. -->
+        <Style x:Key="DimensionSliderStyle" TargetType="Slider">
+            <Setter Property="Height" Value="18"/>
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+            <Setter Property="IsMoveToPointEnabled" Value="True"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Foreground" Value="#FF2F7DF6"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Slider">
+                        <Grid Height="18" VerticalAlignment="Center">
+                            <Border x:Name="FocusRing"
+                                    Height="10"
+                                    VerticalAlignment="Center"
+                                    CornerRadius="5"
+                                    Opacity="0.28"
+                                    Visibility="Collapsed"
+                                    Background="{TemplateBinding Foreground}"/>
+                            <Border Height="4"
+                                    VerticalAlignment="Center"
+                                    CornerRadius="2"
+                                    Background="#FF303034"/>
+                            <Track x:Name="PART_Track" VerticalAlignment="Center">
+                                <Track.DecreaseRepeatButton>
+                                    <RepeatButton Command="{x:Static Slider.DecreaseLarge}">
+                                        <RepeatButton.Template>
+                                            <ControlTemplate TargetType="RepeatButton">
+                                                <Border Height="4"
+                                                        VerticalAlignment="Center"
+                                                        CornerRadius="2"
+                                                        Background="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Slider}}"/>
+                                            </ControlTemplate>
+                                        </RepeatButton.Template>
+                                    </RepeatButton>
+                                </Track.DecreaseRepeatButton>
+                                <Track.Thumb>
+                                    <Thumb Width="15" Height="15">
+                                        <Thumb.Template>
+                                            <ControlTemplate TargetType="Thumb">
+                                                <Border x:Name="ThumbBody"
+                                                        CornerRadius="8"
+                                                        Background="#FFF4F6FA"
+                                                        BorderBrush="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Slider}}"
+                                                        BorderThickness="3"/>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter TargetName="ThumbBody" Property="Background" Value="#FFFFFFFF"/>
+                                                    </Trigger>
+                                                    <Trigger Property="IsDragging" Value="True">
+                                                        <Setter TargetName="ThumbBody" Property="Background"
+                                                                Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Slider}}"/>
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Thumb.Template>
+                                    </Thumb>
+                                </Track.Thumb>
+                                <Track.IncreaseRepeatButton>
+                                    <RepeatButton Command="{x:Static Slider.IncreaseLarge}">
+                                        <RepeatButton.Template>
+                                            <ControlTemplate TargetType="RepeatButton">
+                                                <Border Background="Transparent"/>
+                                            </ControlTemplate>
+                                        </RepeatButton.Template>
+                                    </RepeatButton>
+                                </Track.IncreaseRepeatButton>
+                            </Track>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="FocusRing" Property="Visibility" Value="Visible"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
         <Style x:Key="PixelValueTextBoxStyle"
                TargetType="TextBox"
                BasedOn="{StaticResource {x:Type TextBox}}">
@@ -782,12 +890,38 @@
         </ScrollViewer>
 
         <Grid x:Name="DimensionsPanel" Grid.Row="1" Grid.Column="2">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="14"/>
                 <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
-            <StackPanel>
+            <StackPanel Grid.ColumnSpan="3" Margin="0,0,0,14">
+                <Border HorizontalAlignment="Left"
+                        CornerRadius="17"
+                        Padding="2"
+                        Background="#FF242427">
+                    <StackPanel Orientation="Horizontal">
+                        <RadioButton x:Name="SingleMonitorModeButton"
+                                     Content="Pojedynczy monitor"
+                                     GroupName="DimensionMode"
+                                     Tag="Single"
+                                     Style="{StaticResource DimensionModeToggleStyle}"
+                                     Checked="DimensionMode_Checked"/>
+                        <RadioButton x:Name="MultiMonitorModeButton"
+                                     Content="Wiele monitorów"
+                                     GroupName="DimensionMode"
+                                     Tag="Multi"
+                                     Style="{StaticResource DimensionModeToggleStyle}"
+                                     Checked="DimensionMode_Checked"/>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+            <StackPanel Grid.Row="1" Grid.ColumnSpan="3">
                 <Grid>
                     <TextBlock Text="Szerokość" Foreground="#FFA9A2A5" VerticalAlignment="Center"/>
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
@@ -799,11 +933,12 @@
                     </StackPanel>
                 </Grid>
                 <Slider x:Name="WidthSlider"
+                        Style="{StaticResource DimensionSliderStyle}"
                         Minimum="310"
                         Margin="0,10,0,18"
                         ValueChanged="DimensionSlider_ValueChanged"/>
             </StackPanel>
-            <StackPanel Grid.Column="2">
+            <StackPanel Grid.Row="2" Grid.ColumnSpan="3">
                 <Grid>
                     <TextBlock Text="Wysokość" Foreground="#FFA9A2A5" VerticalAlignment="Center"/>
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
@@ -815,6 +950,7 @@
                     </StackPanel>
                 </Grid>
                 <Slider x:Name="HeightSlider"
+                        Style="{StaticResource DimensionSliderStyle}"
                         Minimum="70"
                         Margin="0,10,0,18"
                         ValueChanged="DimensionSlider_ValueChanged"/>

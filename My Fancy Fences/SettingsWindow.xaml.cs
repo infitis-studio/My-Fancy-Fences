@@ -49,6 +49,17 @@ public partial class SettingsWindow : Window
     public PackIconLucideKind FenceIcon { get; private set; }
     public double FenceWidth { get; private set; }
     public double FenceHeight { get; private set; }
+    public double FenceSingleWidth { get; private set; }
+    public double FenceSingleHeight { get; private set; }
+    public double FenceMultiWidth { get; private set; }
+    public double FenceMultiHeight { get; private set; }
+    private double _singleWidth;
+    private double _singleHeight;
+    private double _multiWidth;
+    private double _multiHeight;
+    private bool _activeIsMulti;
+    private bool _editingMulti;
+    private bool _loadingDimensions;
     public string SourceFolder { get; private set; }
     public Color BackgroundColor { get; private set; }
     public double BackgroundOpacity { get; private set; }
@@ -103,7 +114,12 @@ public partial class SettingsWindow : Window
         double iconFontOpacity,
         bool iconFontBold,
         double iconLetterSpacing,
-        bool isNewPanel = false)
+        bool isNewPanel = false,
+        double? singleWidth = null,
+        double? singleHeight = null,
+        double? multiWidth = null,
+        double? multiHeight = null,
+        bool multiActive = false)
     {
         InitializeComponent();
         Icon = AppIconProvider.Image;
@@ -161,8 +177,16 @@ public partial class SettingsWindow : Window
             ?? availableFonts.FirstOrDefault();
         WidthSlider.Maximum = Math.Max(310, SystemParameters.PrimaryScreenWidth);
         HeightSlider.Maximum = Math.Max(70, SystemParameters.PrimaryScreenHeight);
-        WidthSlider.Value = Math.Clamp(width, WidthSlider.Minimum, WidthSlider.Maximum);
-        HeightSlider.Value = Math.Clamp(height, HeightSlider.Minimum, HeightSlider.Maximum);
+        // The active mode starts from the live panel size; the other one from its saved size (or the live size).
+        _activeIsMulti = multiActive;
+        _editingMulti = multiActive;
+        _singleWidth = multiActive ? singleWidth ?? width : width;
+        _singleHeight = multiActive ? singleHeight ?? height : height;
+        _multiWidth = multiActive ? width : multiWidth ?? width;
+        _multiHeight = multiActive ? height : multiHeight ?? height;
+        LoadEditedDimensions();
+        ApplyDimensionModeVisuals();
+        (multiActive ? MultiMonitorModeButton : SingleMonitorModeButton).IsChecked = true;
         FolderTextBox.Text = sourceFolder;
         FolderPanel.Visibility = Visibility.Collapsed;
         BackgroundColorTextBox.Text = $"#{backgroundColor.R:X2}{backgroundColor.G:X2}{backgroundColor.B:X2}";
@@ -235,8 +259,13 @@ public partial class SettingsWindow : Window
 
         FenceTitle = title;
         FenceIcon = icon;
-        FenceWidth = WidthSlider.Value;
-        FenceHeight = HeightSlider.Value;
+        StoreEditedDimensions();
+        FenceSingleWidth = _singleWidth;
+        FenceSingleHeight = _singleHeight;
+        FenceMultiWidth = _multiWidth;
+        FenceMultiHeight = _multiHeight;
+        FenceWidth = _activeIsMulti ? _multiWidth : _singleWidth;
+        FenceHeight = _activeIsMulti ? _multiHeight : _singleHeight;
         SourceFolder = sourceFolder;
         BackgroundColor = backgroundColor;
         BackgroundOpacity = _backgroundOpacity;
@@ -577,7 +606,70 @@ public partial class SettingsWindow : Window
 
         WidthValueText.Text = Math.Round(WidthSlider.Value).ToString(CultureInfo.CurrentCulture);
         HeightValueText.Text = Math.Round(HeightSlider.Value).ToString(CultureInfo.CurrentCulture);
+        if (!_loadingDimensions)
+            StoreEditedDimensions();
         RaisePreviewChanged();
+    }
+
+    private void DimensionMode_Checked(object sender, RoutedEventArgs e)
+    {
+        if (WidthSlider is null || HeightSlider is null)
+            return;
+
+        _editingMulti = ReferenceEquals(sender, MultiMonitorModeButton);
+        LoadEditedDimensions();
+        ApplyDimensionModeVisuals();
+        RaisePreviewChanged();
+    }
+
+    /// <summary>Remembers the slider values for the mode being edited, leaving the other mode untouched.</summary>
+    private void StoreEditedDimensions()
+    {
+        if (_editingMulti)
+        {
+            _multiWidth = WidthSlider.Value;
+            _multiHeight = HeightSlider.Value;
+        }
+        else
+        {
+            _singleWidth = WidthSlider.Value;
+            _singleHeight = HeightSlider.Value;
+        }
+    }
+
+    private void LoadEditedDimensions()
+    {
+        _loadingDimensions = true;
+        try
+        {
+            WidthSlider.Value = Math.Clamp(
+                _editingMulti ? _multiWidth : _singleWidth,
+                WidthSlider.Minimum,
+                WidthSlider.Maximum);
+            HeightSlider.Value = Math.Clamp(
+                _editingMulti ? _multiHeight : _singleHeight,
+                HeightSlider.Minimum,
+                HeightSlider.Maximum);
+            WidthValueText.Text = Math.Round(WidthSlider.Value).ToString(CultureInfo.CurrentCulture);
+            HeightValueText.Text = Math.Round(HeightSlider.Value).ToString(CultureInfo.CurrentCulture);
+        }
+        finally
+        {
+            _loadingDimensions = false;
+        }
+    }
+
+    /// <summary>Single monitor: blue + cyan sliders. Multi monitor: green + orange sliders.</summary>
+    private void ApplyDimensionModeVisuals()
+    {
+        var widthColor = _editingMulti ? Color.FromRgb(0x34, 0xD3, 0x99) : Color.FromRgb(0x3B, 0x82, 0xF6);
+        var heightColor = _editingMulti ? Color.FromRgb(0xFB, 0x92, 0x3C) : Color.FromRgb(0x22, 0xD3, 0xEE);
+        var widthBrush = new SolidColorBrush(widthColor);
+        var heightBrush = new SolidColorBrush(heightColor);
+        WidthSlider.Foreground = widthBrush;
+        HeightSlider.Foreground = heightBrush;
+        WidthValueText.Foreground = widthBrush;
+        HeightValueText.Foreground = heightBrush;
     }
 
     private void PixelValueTextBox_LostKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
@@ -629,6 +721,23 @@ public partial class SettingsWindow : Window
     {
         var clampedWidth = Math.Clamp(width, WidthSlider.Minimum, WidthSlider.Maximum);
         var clampedHeight = Math.Clamp(height, HeightSlider.Minimum, HeightSlider.Maximum);
+
+        // Resizing the live panel changes the active mode, which may not be the one shown in the sliders.
+        if (_editingMulti != _activeIsMulti)
+        {
+            if (_activeIsMulti)
+            {
+                _multiWidth = clampedWidth;
+                _multiHeight = clampedHeight;
+            }
+            else
+            {
+                _singleWidth = clampedWidth;
+                _singleHeight = clampedHeight;
+            }
+
+            return;
+        }
 
         if (Math.Abs(WidthSlider.Value - clampedWidth) > 0.1)
             WidthSlider.Value = clampedWidth;
@@ -858,8 +967,8 @@ public partial class SettingsWindow : Window
             IconComboBox.SelectedItem is PackIconLucideKind selectedIcon
                 ? selectedIcon
                 : AvailableIcons[0],
-            WidthSlider.Value,
-            HeightSlider.Value,
+            _activeIsMulti ? _multiWidth : _singleWidth,
+            _activeIsMulti ? _multiHeight : _singleHeight,
             FolderTextBox.Text,
             HideFoldersCheckBox.IsChecked == true,
             color,
