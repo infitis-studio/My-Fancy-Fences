@@ -135,6 +135,13 @@
         </Style>
     </Window.Resources>
 
+    <Grid>
+    <Border x:Name="BlurBackdrop"
+            Margin="9"
+            CornerRadius="11"
+            IsHitTestVisible="False"
+            Visibility="Collapsed"/>
+
     <Border x:Name="FenceBorder"
             Margin="9"
             CornerRadius="11"
@@ -372,4 +379,5 @@
 
         </Grid>
     </Border>
+    </Grid>
 </Window>

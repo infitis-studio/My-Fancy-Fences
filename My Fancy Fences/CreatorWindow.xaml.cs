@@ -111,6 +111,12 @@ public partial class CreatorWindow : Window
             return;
         }
 
+        if (PanelLockService.IsLocked)
+        {
+            e.Handled = true;
+            return;
+        }
+
         _isDragging = true;
         _dragStart = PointToScreen(e.GetPosition(this));
         _startLeft = Left;

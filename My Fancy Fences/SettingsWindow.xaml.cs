@@ -53,6 +53,7 @@ public partial class SettingsWindow : Window
     public double FenceSingleHeight { get; private set; }
     public double FenceMultiWidth { get; private set; }
     public double FenceMultiHeight { get; private set; }
+    public double FenceBackgroundBlur { get; private set; }
     private double _singleWidth;
     private double _singleHeight;
     private double _multiWidth;
@@ -119,7 +120,8 @@ public partial class SettingsWindow : Window
         double? singleHeight = null,
         double? multiWidth = null,
         double? multiHeight = null,
-        bool multiActive = false)
+        bool multiActive = false,
+        double backgroundBlur = 0)
     {
         InitializeComponent();
         Icon = AppIconProvider.Image;
@@ -187,6 +189,8 @@ public partial class SettingsWindow : Window
         LoadEditedDimensions();
         ApplyDimensionModeVisuals();
         (multiActive ? MultiMonitorModeButton : SingleMonitorModeButton).IsChecked = true;
+        BlurSlider.Value = Math.Clamp(backgroundBlur, BlurSlider.Minimum, BlurSlider.Maximum);
+        UpdateBlurText();
         FolderTextBox.Text = sourceFolder;
         FolderPanel.Visibility = Visibility.Collapsed;
         BackgroundColorTextBox.Text = $"#{backgroundColor.R:X2}{backgroundColor.G:X2}{backgroundColor.B:X2}";
@@ -260,6 +264,7 @@ public partial class SettingsWindow : Window
         FenceTitle = title;
         FenceIcon = icon;
         StoreEditedDimensions();
+        FenceBackgroundBlur = BlurSlider.Value;
         FenceSingleWidth = _singleWidth;
         FenceSingleHeight = _singleHeight;
         FenceMultiWidth = _multiWidth;
@@ -318,6 +323,7 @@ public partial class SettingsWindow : Window
         BorderColorTextBox.Text = "#FFFFFF";
         BorderRadiusSlider.Value = 11;
         BorderThicknessSlider.Value = 0;
+        BlurSlider.Value = 0;
         UpdateBackgroundPreview();
         UpdateBorderPreview();
         RaisePreviewChanged();
@@ -609,6 +615,31 @@ public partial class SettingsWindow : Window
         if (!_loadingDimensions)
             StoreEditedDimensions();
         RaisePreviewChanged();
+    }
+
+    private void BlurSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (!IsInitialized)
+            return;
+
+        UpdateBlurText();
+        RaisePreviewChanged();
+    }
+
+    private void UpdateBlurText()
+    {
+        var value = Math.Round(BlurSlider.Value);
+        BlurValueText.Text = value.ToString(CultureInfo.CurrentCulture);
+        var level = value switch
+        {
+            < 1 => "Brak",
+            < 10 => "Bardzo lekkie",
+            < 20 => "Lekkie",
+            < 30 => "Średnie",
+            < 40 => "Mocne",
+            _ => "Bardzo mocne"
+        };
+        BlurLevelText.Text = LocalizationService.T(level);
     }
 
     private void DimensionMode_Checked(object sender, RoutedEventArgs e)
@@ -988,7 +1019,8 @@ public partial class SettingsWindow : Window
             iconFontColor,
             _iconFontOpacity,
             IconBoldFontCheckBox.IsChecked == true,
-            IconLetterSpacingSlider.Value));
+            IconLetterSpacingSlider.Value,
+            BlurSlider.Value));
     }
 }
 
@@ -1016,4 +1048,5 @@ public sealed record SettingsPreviewEventArgs(
     Color IconFontColor,
     double IconFontOpacity,
     bool IconFontBold,
-    double IconLetterSpacing);
+    double IconLetterSpacing,
+    double BackgroundBlur = 0);

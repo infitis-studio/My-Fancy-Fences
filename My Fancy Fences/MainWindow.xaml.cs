@@ -62,6 +62,10 @@ public partial class MainWindow : Window
     private const uint TraySettingsCommand = 4;
     private const uint TrayWallpapersCommand = 5;
     private const uint TrayNewPanelCommand = 6;
+    private const uint TrayLockPanelsCommand = 7;
+    private const uint NimModify = 0x00000001;
+    private const uint NifInfo = 0x00000010;
+    private const uint NiifInfo = 0x00000001;
     private const int WhMouseLowLevel = 14;
     private const int WmLeftButtonDown = 0x0201;
     private const int WmRightButtonDown = 0x0204;
@@ -116,6 +120,11 @@ public partial class MainWindow : Window
     private double? _creatorSingleTop;
     private bool? _creatorPlacementIsMulti;
     private System.Windows.Threading.DispatcherTimer? _displayChangeTimer;
+    private double _backgroundBlur;
+    private ImageBrush? _blurBrush;
+    private Size _blurMonitorSize;
+    private bool _blurHooked;
+    private System.Windows.Threading.DispatcherTimer? _blurRefreshTimer;
     private static readonly string SettingsFilePath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "My Fancy Fences",
@@ -202,6 +211,7 @@ public partial class MainWindow : Window
             LoadSavedSettings();
         SourceInitialized += MainWindow_SourceInitialized;
         Loaded += MainWindow_Loaded;
+        Closed += (_, _) => SetBlurHooked(false);
         Closing += (_, _) =>
         {
             _folderRefreshTimer.Stop();
@@ -237,6 +247,7 @@ public partial class MainWindow : Window
         else
             PositionNewPanel();
         _ = StabilizeDesktopLevelAsync();
+        ScheduleBlurRefresh();
         LoadDesktopItems();
         ApplyHeaderPresentation(_isHeaderHidden);
         if (_isPrimaryWindow)
@@ -560,6 +571,13 @@ public partial class MainWindow : Window
             AppendMenu(menu, MfString, TraySettingsCommand, LocalizationService.T("Zarządzanie"));
             AppendMenu(menu, MfString, TrayWallpapersCommand, LocalizationService.T("Tapety"));
             AppendMenu(menu, MfString, TrayNewPanelCommand, LocalizationService.T("Dodaj nowy panel"));
+            AppendMenu(
+                menu,
+                MfString,
+                TrayLockPanelsCommand,
+                LocalizationService.T(PanelLockService.IsLocked
+                    ? "🔓 Odblokuj wszystkie panele"
+                    : "🔒 Zablokuj wszystkie panele"));
             AppendMenu(menu, MfSeparator, 0, string.Empty);
             AppendMenu(
                 menu,
@@ -594,6 +612,8 @@ public partial class MainWindow : Window
                 OpenPanelsWindow("Wallpaper");
             else if (command == TrayNewPanelCommand)
                 CreateNewPanelFromTray();
+            else if (command == TrayLockPanelsCommand)
+                ToggleAllPanelsLock();
             else if (command == TrayCreatorCommand)
             {
                 _showCreatorPanel = !_showCreatorPanel;
@@ -609,6 +629,28 @@ public partial class MainWindow : Window
         {
             DestroyMenu(menu);
         }
+    }
+
+    private void ToggleAllPanelsLock()
+    {
+        PanelLockService.IsLocked = !PanelLockService.IsLocked;
+        SaveSettings();
+        ShowTrayNotification(LocalizationService.T(PanelLockService.IsLocked
+            ? "Wszystkie panele zostały zablokowane."
+            : "Wszystkie panele zostały odblokowane."));
+    }
+
+    private void ShowTrayNotification(string message)
+    {
+        if (_trayIconData.WindowHandle == IntPtr.Zero)
+            return;
+
+        var data = _trayIconData;
+        data.Flags = NifInfo | NifGuid;
+        data.Info = message;
+        data.InfoTitle = "My Fancy Fences";
+        data.InfoFlags = NiifInfo;
+        ShellNotifyIcon(NimModify, ref data);
     }
 
     private void OpenWallpaperWindow()
@@ -2155,6 +2197,12 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (PanelLockService.IsLocked)
+        {
+            e.Handled = true;
+            return;
+        }
+
         if (e.ButtonState == MouseButtonState.Pressed)
         {
             _isDragging = true;
@@ -2204,6 +2252,7 @@ public partial class MainWindow : Window
         var originalHideFolders = _hideFolders;
         var originalBackgroundColor = _backgroundColor;
         var originalBackgroundOpacity = _backgroundOpacity;
+        var originalBackgroundBlur = _backgroundBlur;
         var originalHeaderHidden = _isHeaderHidden;
         var originalIconSize = _iconSize;
         var originalFontFamily = _fontFamilyName;
@@ -2251,7 +2300,8 @@ public partial class MainWindow : Window
             _singleHeight,
             _multiWidth,
             _multiHeight,
-            MonitorLayoutService.IsMultiMonitor);
+            MonitorLayoutService.IsMultiMonitor,
+            _backgroundBlur);
         settingsWindow.Loaded += (_, _) =>
         {
             settingsWindow.Topmost = true;
@@ -2279,6 +2329,7 @@ public partial class MainWindow : Window
             Width = preview.Width;
             Height = preview.Height;
             ApplyBackground(preview.BackgroundColor, preview.BackgroundOpacity);
+            ApplyBackgroundBlur(preview.BackgroundBlur);
 
             _sourceFolder = ShortcutLibraryService.ShortcutsDirectory;
         };
@@ -2299,6 +2350,7 @@ public partial class MainWindow : Window
             _sourceFolder = originalSourceFolder;
             _hideFolders = originalHideFolders;
             ApplyBackground(originalBackgroundColor, originalBackgroundOpacity);
+            ApplyBackgroundBlur(originalBackgroundBlur);
             LoadDesktopItems();
             return;
         }
@@ -2319,6 +2371,7 @@ public partial class MainWindow : Window
             _sourceFolder = originalSourceFolder;
             _hideFolders = originalHideFolders;
             ApplyBackground(originalBackgroundColor, originalBackgroundOpacity);
+            ApplyBackgroundBlur(originalBackgroundBlur);
             if (_isPrimaryWindow)
             {
                 _showMainPanel = false;
@@ -2359,6 +2412,7 @@ public partial class MainWindow : Window
         _sourceFolder = ShortcutLibraryService.ShortcutsDirectory;
         _hideFolders = settingsWindow.HideFolders;
         ApplyBackground(settingsWindow.BackgroundColor, settingsWindow.BackgroundOpacity);
+            ApplyBackgroundBlur(settingsWindow.FenceBackgroundBlur);
         LoadDesktopItems();
         SendToDesktopLevel();
         SaveSettings();
@@ -2404,7 +2458,8 @@ public partial class MainWindow : Window
             _singleHeight,
             _multiWidth,
             _multiHeight,
-            MonitorLayoutService.IsMultiMonitor);
+            MonitorLayoutService.IsMultiMonitor,
+            _backgroundBlur);
 
         SizeChangedEventHandler panelSizeChanged = (_, _) =>
             settingsWindow.UpdatePanelDimensions(ActualWidth, ActualHeight);
@@ -2429,6 +2484,7 @@ public partial class MainWindow : Window
             Width = preview.Width;
             Height = preview.Height;
             ApplyBackground(preview.BackgroundColor, preview.BackgroundOpacity);
+            ApplyBackgroundBlur(preview.BackgroundBlur);
 
             _sourceFolder = ShortcutLibraryService.ShortcutsDirectory;
         };
@@ -2469,6 +2525,7 @@ public partial class MainWindow : Window
             _sourceFolder = ShortcutLibraryService.ShortcutsDirectory;
             _hideFolders = settingsWindow.HideFolders;
             ApplyBackground(settingsWindow.BackgroundColor, settingsWindow.BackgroundOpacity);
+            ApplyBackgroundBlur(settingsWindow.FenceBackgroundBlur);
             LoadDesktopItems();
             SendToDesktopLevel();
             _isPendingCreation = false;
@@ -2504,6 +2561,142 @@ public partial class MainWindow : Window
             color.R,
             color.G,
             color.B));
+    }
+
+    /// <summary>
+    /// Blur strength (0 = off, up to 40) for the wallpaper shown behind the panel's background colour.
+    /// Only the backdrop layer is affected, so icons and text stay sharp.
+    /// </summary>
+    private void ApplyBackgroundBlur(double radius)
+    {
+        _backgroundBlur = Math.Clamp(Math.Round(radius), 0, 40);
+        if (_backgroundBlur < 1)
+        {
+            _blurRefreshTimer?.Stop();
+            BlurBackdrop.Visibility = Visibility.Collapsed;
+            BlurBackdrop.Background = null;
+            _blurBrush = null;
+            SetBlurHooked(false);
+            return;
+        }
+
+        SetBlurHooked(true);
+        ScheduleBlurRefresh();
+    }
+
+    private void SetBlurHooked(bool hooked)
+    {
+        if (hooked == _blurHooked)
+            return;
+
+        _blurHooked = hooked;
+        if (hooked)
+        {
+            PanelBlurService.EnsureHooks();
+            PanelBlurService.SourceChanged += OnBlurSourceChanged;
+            LocationChanged += OnBlurLocationChanged;
+            SizeChanged += OnBlurSizeChanged;
+        }
+        else
+        {
+            PanelBlurService.SourceChanged -= OnBlurSourceChanged;
+            LocationChanged -= OnBlurLocationChanged;
+            SizeChanged -= OnBlurSizeChanged;
+        }
+    }
+
+    private void OnBlurSourceChanged(object? sender, EventArgs e)
+    {
+        _blurBrush = null;
+        ScheduleBlurRefresh();
+    }
+
+    private void OnBlurLocationChanged(object? sender, EventArgs e) => UpdateBlurPlacement();
+
+    private void OnBlurSizeChanged(object sender, SizeChangedEventArgs e) => UpdateBlurPlacement();
+
+    /// <summary>Re-renders only after a short pause, so dragging the slider does not render per step.</summary>
+    private void ScheduleBlurRefresh()
+    {
+        if (_backgroundBlur < 1)
+            return;
+
+        if (_blurRefreshTimer is null)
+        {
+            _blurRefreshTimer = new System.Windows.Threading.DispatcherTimer
+            {
+                Interval = TimeSpan.FromMilliseconds(90)
+            };
+            _blurRefreshTimer.Tick += (_, _) =>
+            {
+                _blurRefreshTimer.Stop();
+                RefreshBlur();
+            };
+        }
+
+        _blurRefreshTimer.Stop();
+        _blurRefreshTimer.Start();
+    }
+
+    private Rect GetBlurPanelRect() =>
+        new(Left + 9, Top + 9, Math.Max(1, ActualWidth - 18), Math.Max(1, ActualHeight - 18));
+
+    private void RefreshBlur()
+    {
+        if (_backgroundBlur < 1 || !IsLoaded || double.IsNaN(Left) || double.IsNaN(Top))
+            return;
+
+        var rect = GetBlurPanelRect();
+        var monitor = MonitorLayoutService.FindMonitor(rect) ?? MonitorLayoutService.GetPrimary();
+        var image = PanelBlurService.GetBlurredMonitorImage(monitor.Bounds.Size, (int)_backgroundBlur);
+        if (image is null)
+        {
+            BlurBackdrop.Visibility = Visibility.Collapsed;
+            BlurBackdrop.Background = null;
+            _blurBrush = null;
+            return;
+        }
+
+        if (_blurBrush is null || !ReferenceEquals(_blurBrush.ImageSource, image))
+        {
+            _blurBrush = new ImageBrush(image)
+            {
+                ViewboxUnits = BrushMappingMode.Absolute,
+                Stretch = Stretch.Fill
+            };
+            BlurBackdrop.Background = _blurBrush;
+        }
+
+        _blurMonitorSize = monitor.Bounds.Size;
+        ApplyBlurViewbox(rect, monitor);
+        BlurBackdrop.Visibility = Visibility.Visible;
+    }
+
+    /// <summary>Moving or resizing the panel only shifts the visible part of the cached bitmap.</summary>
+    private void UpdateBlurPlacement()
+    {
+        if (_blurBrush is null || !IsLoaded || double.IsNaN(Left) || double.IsNaN(Top))
+            return;
+
+        var rect = GetBlurPanelRect();
+        var monitor = MonitorLayoutService.FindMonitor(rect) ?? MonitorLayoutService.GetPrimary();
+        if (monitor.Bounds.Size != _blurMonitorSize)
+        {
+            ScheduleBlurRefresh();
+            return;
+        }
+
+        ApplyBlurViewbox(rect, monitor);
+    }
+
+    private void ApplyBlurViewbox(Rect rect, MonitorSnapshot monitor)
+    {
+        const double scale = PanelBlurService.Scale;
+        _blurBrush!.Viewbox = new Rect(
+            (rect.X - monitor.Bounds.X) / scale,
+            (rect.Y - monitor.Bounds.Y) / scale,
+            rect.Width / scale,
+            rect.Height / scale);
     }
 
     private void ApplyIconSize(double iconSize)
@@ -2569,6 +2762,7 @@ public partial class MainWindow : Window
         _borderOpacity = Math.Clamp(opacity, 0, 1);
 
         FenceBorder.CornerRadius = new CornerRadius(_borderRadius);
+        BlurBackdrop.CornerRadius = new CornerRadius(_borderRadius);
         FenceBorder.BorderThickness = new Thickness(_borderThickness);
         FenceBorder.BorderBrush = new SolidColorBrush(Color.FromArgb(
             (byte)Math.Round(_borderOpacity * 255),
@@ -2652,6 +2846,7 @@ public partial class MainWindow : Window
             _singleHeight = settings.SingleHeight;
             _creatorSingleLeft = settings.CreatorSingleLeft;
             _creatorSingleTop = settings.CreatorSingleTop;
+            PanelLockService.IsLocked = settings.PanelsLocked ?? false;
             _showCreatorPanel = settings.ShowCreatorPanel;
             _showMainPanel = settings.ShowMainPanel ?? true;
             _creatorHideHeader = settings.CreatorHideHeader;
@@ -2664,6 +2859,7 @@ public partial class MainWindow : Window
             }
             var savedColor = (Color)ColorConverter.ConvertFromString(settings.BackgroundHex);
             ApplyBackground(savedColor, settings.BackgroundOpacity);
+            ApplyBackgroundBlur(settings.BackgroundBlur ?? 0);
             ApplyPanelFont(settings.FontFamilyName);
             var savedBorderColor = string.IsNullOrWhiteSpace(settings.BorderColorHex)
                 ? Colors.White
@@ -2864,7 +3060,9 @@ public partial class MainWindow : Window
                 _creatorSingleLeft,
                 _creatorSingleTop,
                 _singleWidth,
-                _singleHeight);
+                _singleHeight,
+                PanelLockService.IsLocked,
+                _backgroundBlur);
 
             if (File.Exists(SettingsFilePath))
             {
@@ -2982,7 +3180,9 @@ public partial class MainWindow : Window
         double? CreatorSingleLeft = null,
         double? CreatorSingleTop = null,
         double? SingleWidth = null,
-        double? SingleHeight = null);
+        double? SingleHeight = null,
+        bool? PanelsLocked = null,
+        double? BackgroundBlur = null);
 
     private sealed record SavedLayoutSettings(
         string Id,
@@ -3035,7 +3235,8 @@ public partial class MainWindow : Window
         double? SingleTop = null,
         string? MonitorDevice = null,
         double? SingleWidth = null,
-        double? SingleHeight = null);
+        double? SingleHeight = null,
+        double? BackgroundBlur = null);
 
     private SavedPanelSettings CapturePanelSettings()
     {
@@ -3076,7 +3277,8 @@ public partial class MainWindow : Window
         _singleTop,
         _multiMonitor,
         _singleWidth,
-        _singleHeight);
+        _singleHeight,
+        _backgroundBlur);
 
     private void ApplySavedPanelSettings(SavedPanelSettings settings)
     {
@@ -3130,6 +3332,7 @@ public partial class MainWindow : Window
             ApplyBackground(Color.FromRgb(0x0B, 0x0E, 0x12), 0.58);
         }
 
+        ApplyBackgroundBlur(settings.BackgroundBlur ?? 0);
         LoadDesktopItems();
     }
 
@@ -3914,7 +4117,7 @@ public partial class MainWindow : Window
 
     private void ResizeArea_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        if (e.ButtonState != MouseButtonState.Pressed)
+        if (e.ButtonState != MouseButtonState.Pressed || PanelLockService.IsLocked)
             return;
 
         _isResizing = true;

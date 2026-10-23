@@ -223,6 +223,8 @@ public static class MonitorLayoutService
         return (area.Right - width - 24, area.Top + 24);
     }
 
+    public static double SystemScale => GetSystemScale();
+
     private static double GetSystemScale()
     {
         try
