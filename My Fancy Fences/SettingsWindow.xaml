@@ -889,7 +889,7 @@
             </StackPanel>
         </ScrollViewer>
 
-        <Grid x:Name="DimensionsPanel" Grid.Row="1" Grid.Column="2">
+        <Grid x:Name="DimensionsPanel" Grid.Row="1" Grid.RowSpan="8" Grid.Column="2">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
