@@ -1,4 +1,4 @@
-﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
@@ -60,7 +60,6 @@ public partial class MainWindow : Window
     private const uint TrayCreatorCommand = 2;
     private const uint TrayAutoStartCommand = 3;
     private const uint TraySettingsCommand = 4;
-    private const uint TrayWallpapersCommand = 5;
     private const uint TrayNewPanelCommand = 6;
     private const uint TrayLockPanelsCommand = 7;
     private const uint NimModify = 0x00000001;
@@ -120,11 +119,8 @@ public partial class MainWindow : Window
     private double? _creatorSingleTop;
     private bool? _creatorPlacementIsMulti;
     private System.Windows.Threading.DispatcherTimer? _displayChangeTimer;
-    private double _backgroundBlur;
-    private ImageBrush? _blurBrush;
-    private Size _blurMonitorSize;
-    private bool _blurHooked;
-    private System.Windows.Threading.DispatcherTimer? _blurRefreshTimer;
+    private bool _backgroundBlur;
+    private BlurHost? _blurHost;
     private static readonly string SettingsFilePath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "My Fancy Fences",
@@ -147,7 +143,7 @@ public partial class MainWindow : Window
     private bool _creatorHideHeader;
     private double? _creatorLeft;
     private double? _creatorTop;
-    private const double CreatorPanelWidth = 360;
+    private const double CreatorPanelWidth = 462;
     private const double CreatorPanelHeight = 160;
     private Color _creatorBackgroundColor = Color.FromRgb(0x0B, 0x0E, 0x12);
     private double _creatorBackgroundOpacity = 0.58;
@@ -211,7 +207,11 @@ public partial class MainWindow : Window
             LoadSavedSettings();
         SourceInitialized += MainWindow_SourceInitialized;
         Loaded += MainWindow_Loaded;
-        Closed += (_, _) => SetBlurHooked(false);
+        Closed += (_, _) =>
+        {
+            _blurHost?.Dispose();
+            _blurHost = null;
+        };
         Closing += (_, _) =>
         {
             _folderRefreshTimer.Stop();
@@ -247,7 +247,7 @@ public partial class MainWindow : Window
         else
             PositionNewPanel();
         _ = StabilizeDesktopLevelAsync();
-        ScheduleBlurRefresh();
+        SyncBlurHost();
         LoadDesktopItems();
         ApplyHeaderPresentation(_isHeaderHidden);
         if (_isPrimaryWindow)
@@ -275,7 +275,25 @@ public partial class MainWindow : Window
             }
 
             _ = CompactMemoryAfterStartupAsync();
+            if (FirstRunService.NoticePending)
+                _ = ShowFirstRunNoticeAsync();
+            if (FirstRunService.TrayPromotionPending)
+                _ = FirstRunService.EnsureTrayIconVisibleAsync();
         }
+    }
+
+    /// <summary>First launch of a fresh installation: tell the user how to open the management window.</summary>
+    private async Task ShowFirstRunNoticeAsync()
+    {
+        // Let the desktop and the tray icon settle first.
+        await Task.Delay(TimeSpan.FromSeconds(2));
+        if (!IsLoaded)
+            return;
+
+        _notificationWindow ??= new NotificationWindow();
+        if (!_notificationWindow.IsVisible)
+            _notificationWindow.ToggleVisibility();
+        FirstRunService.MarkNoticeShown();
     }
 
     private async Task CompactMemoryAfterStartupAsync()
@@ -566,10 +584,11 @@ public partial class MainWindow : Window
         if (menu == IntPtr.Zero)
             return;
 
+        var icons = new List<IntPtr>();
         try
         {
-            AppendMenu(menu, MfString, TraySettingsCommand, LocalizationService.T("Zarządzanie"));
-            AppendMenu(menu, MfString, TrayWallpapersCommand, LocalizationService.T("Tapety"));
+            // Icons sit in the menu's icon column, so every item text starts in the same place.
+            AppendMenu(menu, MfString, TraySettingsCommand, LocalizationService.T("Panel ustawień"));
             AppendMenu(menu, MfString, TrayNewPanelCommand, LocalizationService.T("Dodaj nowy panel"));
             AppendMenu(
                 menu,
@@ -577,7 +596,10 @@ public partial class MainWindow : Window
                 TrayLockPanelsCommand,
                 LocalizationService.T(PanelLockService.IsLocked
                     ? "🔓 Odblokuj wszystkie panele"
-                    : "🔒 Zablokuj wszystkie panele"));
+                    : "🔒 Zablokuj wszystkie panele")[3..]);
+            icons.Add(MenuIcon.Attach(menu, TraySettingsCommand, "\u2699"));
+            icons.Add(MenuIcon.Attach(menu, TrayNewPanelCommand, "\u2795"));
+            icons.Add(MenuIcon.Attach(menu, TrayLockPanelsCommand, PanelLockService.IsLocked ? "\U0001F513" : "\U0001F512"));
             AppendMenu(menu, MfSeparator, 0, string.Empty);
             AppendMenu(
                 menu,
@@ -608,8 +630,6 @@ public partial class MainWindow : Window
 
             if (command == TraySettingsCommand)
                 OpenPanelsWindow();
-            else if (command == TrayWallpapersCommand)
-                OpenPanelsWindow("Wallpaper");
             else if (command == TrayNewPanelCommand)
                 CreateNewPanelFromTray();
             else if (command == TrayLockPanelsCommand)
@@ -628,7 +648,18 @@ public partial class MainWindow : Window
         finally
         {
             DestroyMenu(menu);
+            foreach (var icon in icons)
+                MenuIcon.Delete(icon);
         }
+    }
+
+    private NotificationWindow? _notificationWindow;
+
+    /// <summary>Shows or hides the own notification window (a plain rectangle for now).</summary>
+    private void ToggleNotificationWindow()
+    {
+        _notificationWindow ??= new NotificationWindow();
+        _notificationWindow.ToggleVisibility();
     }
 
     private void ToggleAllPanelsLock()
@@ -2301,7 +2332,7 @@ public partial class MainWindow : Window
             _multiWidth,
             _multiHeight,
             MonitorLayoutService.IsMultiMonitor,
-            _backgroundBlur);
+            _backgroundBlur ? 1.0 : 0.0);
         settingsWindow.Loaded += (_, _) =>
         {
             settingsWindow.Topmost = true;
@@ -2329,7 +2360,7 @@ public partial class MainWindow : Window
             Width = preview.Width;
             Height = preview.Height;
             ApplyBackground(preview.BackgroundColor, preview.BackgroundOpacity);
-            ApplyBackgroundBlur(preview.BackgroundBlur);
+            ApplyBackgroundBlur(preview.BackgroundBlur > 0);
 
             _sourceFolder = ShortcutLibraryService.ShortcutsDirectory;
         };
@@ -2412,7 +2443,7 @@ public partial class MainWindow : Window
         _sourceFolder = ShortcutLibraryService.ShortcutsDirectory;
         _hideFolders = settingsWindow.HideFolders;
         ApplyBackground(settingsWindow.BackgroundColor, settingsWindow.BackgroundOpacity);
-            ApplyBackgroundBlur(settingsWindow.FenceBackgroundBlur);
+            ApplyBackgroundBlur(settingsWindow.FenceBackgroundBlur > 0);
         LoadDesktopItems();
         SendToDesktopLevel();
         SaveSettings();
@@ -2459,7 +2490,7 @@ public partial class MainWindow : Window
             _multiWidth,
             _multiHeight,
             MonitorLayoutService.IsMultiMonitor,
-            _backgroundBlur);
+            _backgroundBlur ? 1.0 : 0.0);
 
         SizeChangedEventHandler panelSizeChanged = (_, _) =>
             settingsWindow.UpdatePanelDimensions(ActualWidth, ActualHeight);
@@ -2484,7 +2515,7 @@ public partial class MainWindow : Window
             Width = preview.Width;
             Height = preview.Height;
             ApplyBackground(preview.BackgroundColor, preview.BackgroundOpacity);
-            ApplyBackgroundBlur(preview.BackgroundBlur);
+            ApplyBackgroundBlur(preview.BackgroundBlur > 0);
 
             _sourceFolder = ShortcutLibraryService.ShortcutsDirectory;
         };
@@ -2525,7 +2556,7 @@ public partial class MainWindow : Window
             _sourceFolder = ShortcutLibraryService.ShortcutsDirectory;
             _hideFolders = settingsWindow.HideFolders;
             ApplyBackground(settingsWindow.BackgroundColor, settingsWindow.BackgroundOpacity);
-            ApplyBackgroundBlur(settingsWindow.FenceBackgroundBlur);
+            ApplyBackgroundBlur(settingsWindow.FenceBackgroundBlur > 0);
             LoadDesktopItems();
             SendToDesktopLevel();
             _isPendingCreation = false;
@@ -2564,141 +2595,67 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Blur strength (0 = off, up to 40) for the wallpaper shown behind the panel's background colour.
-    /// Only the backdrop layer is affected, so icons and text stay sharp.
+    /// Background blur on or off. The blur is the Windows blur-behind effect on a window under the panel:
+    /// drawn by the compositor (live, also over an animated wallpaper, no cost for the application)
+    /// and of a fixed strength.
     /// </summary>
-    private void ApplyBackgroundBlur(double radius)
+    private void ApplyBackgroundBlur(bool enabled)
     {
-        _backgroundBlur = Math.Clamp(Math.Round(radius), 0, 40);
-        if (_backgroundBlur < 1)
-        {
-            _blurRefreshTimer?.Stop();
-            BlurBackdrop.Visibility = Visibility.Collapsed;
-            BlurBackdrop.Background = null;
-            _blurBrush = null;
-            SetBlurHooked(false);
-            return;
-        }
-
-        SetBlurHooked(true);
-        ScheduleBlurRefresh();
-    }
-
-    private void SetBlurHooked(bool hooked)
-    {
-        if (hooked == _blurHooked)
+        if (enabled == _backgroundBlur && (_blurHost is not null) == enabled)
             return;
 
-        _blurHooked = hooked;
-        if (hooked)
+        _backgroundBlur = enabled;
+        if (enabled)
         {
-            PanelBlurService.EnsureHooks();
-            PanelBlurService.SourceChanged += OnBlurSourceChanged;
+            _blurHost ??= new BlurHost();
             LocationChanged += OnBlurLocationChanged;
             SizeChanged += OnBlurSizeChanged;
+            IsVisibleChanged += OnBlurVisibleChanged;
+            SyncBlurHost();
         }
         else
         {
-            PanelBlurService.SourceChanged -= OnBlurSourceChanged;
             LocationChanged -= OnBlurLocationChanged;
             SizeChanged -= OnBlurSizeChanged;
-        }
-    }
-
-    private void OnBlurSourceChanged(object? sender, EventArgs e)
-    {
-        _blurBrush = null;
-        ScheduleBlurRefresh();
-    }
-
-    private void OnBlurLocationChanged(object? sender, EventArgs e) => UpdateBlurPlacement();
-
-    private void OnBlurSizeChanged(object sender, SizeChangedEventArgs e) => UpdateBlurPlacement();
-
-    /// <summary>Re-renders only after a short pause, so dragging the slider does not render per step.</summary>
-    private void ScheduleBlurRefresh()
-    {
-        if (_backgroundBlur < 1)
-            return;
-
-        if (_blurRefreshTimer is null)
-        {
-            _blurRefreshTimer = new System.Windows.Threading.DispatcherTimer
-            {
-                Interval = TimeSpan.FromMilliseconds(90)
-            };
-            _blurRefreshTimer.Tick += (_, _) =>
-            {
-                _blurRefreshTimer.Stop();
-                RefreshBlur();
-            };
+            IsVisibleChanged -= OnBlurVisibleChanged;
+            _blurHost?.Dispose();
+            _blurHost = null;
         }
 
-        _blurRefreshTimer.Stop();
-        _blurRefreshTimer.Start();
+        ApplyCornerRadius();
     }
 
-    private Rect GetBlurPanelRect() =>
-        new(Left + 9, Top + 9, Math.Max(1, ActualWidth - 18), Math.Max(1, ActualHeight - 18));
+    /// <summary>Windows draws the blur window with 0, 4 or 8 px corners only, so a blurred panel uses the nearest.</summary>
+    private static double SnapBlurRadius(double radius) => radius < 2 ? 0 : radius < 6 ? 4 : 8;
 
-    private void RefreshBlur()
+    private double EffectiveBorderRadius => _backgroundBlur ? SnapBlurRadius(_borderRadius) : _borderRadius;
+
+    private void ApplyCornerRadius()
     {
-        if (_backgroundBlur < 1 || !IsLoaded || double.IsNaN(Left) || double.IsNaN(Top))
-            return;
-
-        var rect = GetBlurPanelRect();
-        var monitor = MonitorLayoutService.FindMonitor(rect) ?? MonitorLayoutService.GetPrimary();
-        var image = PanelBlurService.GetBlurredMonitorImage(monitor.Bounds.Size, (int)_backgroundBlur);
-        if (image is null)
-        {
-            BlurBackdrop.Visibility = Visibility.Collapsed;
-            BlurBackdrop.Background = null;
-            _blurBrush = null;
-            return;
-        }
-
-        if (_blurBrush is null || !ReferenceEquals(_blurBrush.ImageSource, image))
-        {
-            _blurBrush = new ImageBrush(image)
-            {
-                ViewboxUnits = BrushMappingMode.Absolute,
-                Stretch = Stretch.Fill
-            };
-            BlurBackdrop.Background = _blurBrush;
-        }
-
-        _blurMonitorSize = monitor.Bounds.Size;
-        ApplyBlurViewbox(rect, monitor);
-        BlurBackdrop.Visibility = Visibility.Visible;
+        FenceBorder.CornerRadius = new CornerRadius(EffectiveBorderRadius);
+        if (_backgroundBlur)
+            SyncBlurHost();
     }
 
-    /// <summary>Moving or resizing the panel only shifts the visible part of the cached bitmap.</summary>
-    private void UpdateBlurPlacement()
+    private void OnBlurLocationChanged(object? sender, EventArgs e) => SyncBlurHost();
+
+    private void OnBlurSizeChanged(object sender, SizeChangedEventArgs e) => SyncBlurHost();
+
+    private void OnBlurVisibleChanged(object sender, DependencyPropertyChangedEventArgs e) => SyncBlurHost();
+
+    /// <summary>Keeps the blur window under the panel: same rectangle, same z-order slot.</summary>
+    private void SyncBlurHost()
     {
-        if (_blurBrush is null || !IsLoaded || double.IsNaN(Left) || double.IsNaN(Top))
+        if (!_backgroundBlur || _blurHost is null || _windowHandle == IntPtr.Zero || !IsLoaded)
             return;
 
-        var rect = GetBlurPanelRect();
-        var monitor = MonitorLayoutService.FindMonitor(rect) ?? MonitorLayoutService.GetPrimary();
-        if (monitor.Bounds.Size != _blurMonitorSize)
-        {
-            ScheduleBlurRefresh();
-            return;
-        }
-
-        ApplyBlurViewbox(rect, monitor);
+        var scale = MonitorLayoutService.SystemScale;
+        _blurHost.Sync(
+            _windowHandle,
+            (int)Math.Round(9 * scale),
+            (int)Math.Round(EffectiveBorderRadius),
+            IsVisible);
     }
-
-    private void ApplyBlurViewbox(Rect rect, MonitorSnapshot monitor)
-    {
-        const double scale = PanelBlurService.Scale;
-        _blurBrush!.Viewbox = new Rect(
-            (rect.X - monitor.Bounds.X) / scale,
-            (rect.Y - monitor.Bounds.Y) / scale,
-            rect.Width / scale,
-            rect.Height / scale);
-    }
-
     private void ApplyIconSize(double iconSize)
     {
         _iconSize = Math.Clamp(iconSize, 24, 64);
@@ -2761,8 +2718,7 @@ public partial class MainWindow : Window
         _borderColor = color;
         _borderOpacity = Math.Clamp(opacity, 0, 1);
 
-        FenceBorder.CornerRadius = new CornerRadius(_borderRadius);
-        BlurBackdrop.CornerRadius = new CornerRadius(_borderRadius);
+        ApplyCornerRadius();
         FenceBorder.BorderThickness = new Thickness(_borderThickness);
         FenceBorder.BorderBrush = new SolidColorBrush(Color.FromArgb(
             (byte)Math.Round(_borderOpacity * 255),
@@ -2859,7 +2815,7 @@ public partial class MainWindow : Window
             }
             var savedColor = (Color)ColorConverter.ConvertFromString(settings.BackgroundHex);
             ApplyBackground(savedColor, settings.BackgroundOpacity);
-            ApplyBackgroundBlur(settings.BackgroundBlur ?? 0);
+            ApplyBackgroundBlur((settings.BackgroundBlur ?? 0) > 0);
             ApplyPanelFont(settings.FontFamilyName);
             var savedBorderColor = string.IsNullOrWhiteSpace(settings.BorderColorHex)
                 ? Colors.White
@@ -3062,7 +3018,7 @@ public partial class MainWindow : Window
                 _singleWidth,
                 _singleHeight,
                 PanelLockService.IsLocked,
-                _backgroundBlur);
+                _backgroundBlur ? 1.0 : 0.0);
 
             if (File.Exists(SettingsFilePath))
             {
@@ -3278,7 +3234,7 @@ public partial class MainWindow : Window
         _multiMonitor,
         _singleWidth,
         _singleHeight,
-        _backgroundBlur);
+        _backgroundBlur ? 1.0 : 0.0);
 
     private void ApplySavedPanelSettings(SavedPanelSettings settings)
     {
@@ -3332,7 +3288,7 @@ public partial class MainWindow : Window
             ApplyBackground(Color.FromRgb(0x0B, 0x0E, 0x12), 0.58);
         }
 
-        ApplyBackgroundBlur(settings.BackgroundBlur ?? 0);
+        ApplyBackgroundBlur((settings.BackgroundBlur ?? 0) > 0);
         LoadDesktopItems();
     }
 
@@ -3706,6 +3662,9 @@ public partial class MainWindow : Window
                 };
                 _creatorWindow.SettingsRequested += (_, _) => OpenPanelsWindow();
                 _creatorWindow.WallpaperRequested += (_, _) => OpenPanelsWindow("Wallpaper");
+                _creatorWindow.ShowNotificationRequested += (_, _) =>
+                    ShowTrayNotification("To jest testowe powiadomienie z My Fancy Fences.");
+                _creatorWindow.ToggleNotificationWindowRequested += (_, _) => ToggleNotificationWindow();
             }
 
             if (!_creatorWindow.IsVisible)
@@ -4149,7 +4108,11 @@ public partial class MainWindow : Window
     }
 
     private void SendToDesktopLevel()
-        => SendWindowToDesktopLevel(_windowHandle);
+    {
+        SendWindowToDesktopLevel(_windowHandle);
+        if (_backgroundBlur)
+            SyncBlurHost();
+    }
 
     internal static void SendWindowToDesktopLevel(IntPtr windowHandle)
     {

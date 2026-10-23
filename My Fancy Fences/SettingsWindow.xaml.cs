@@ -61,6 +61,11 @@ public partial class SettingsWindow : Window
     private bool _activeIsMulti;
     private bool _editingMulti;
     private bool _loadingDimensions;
+    private bool _loadingBlur;
+    private double? _radiusBeforeBlur;
+    private double? _opacityBeforeBlur;
+    // 1% (not 0) keeps the panel clickable: fully transparent pixels let mouse clicks fall through.
+    private const double BlurBackgroundOpacity = 0.01;
     public string SourceFolder { get; private set; }
     public Color BackgroundColor { get; private set; }
     public double BackgroundOpacity { get; private set; }
@@ -189,8 +194,10 @@ public partial class SettingsWindow : Window
         LoadEditedDimensions();
         ApplyDimensionModeVisuals();
         (multiActive ? MultiMonitorModeButton : SingleMonitorModeButton).IsChecked = true;
-        BlurSlider.Value = Math.Clamp(backgroundBlur, BlurSlider.Minimum, BlurSlider.Maximum);
-        UpdateBlurText();
+        _loadingBlur = true;
+        BlurCheckBox.IsChecked = backgroundBlur > 0;
+        _loadingBlur = false;
+        ApplyRadiusMode(backgroundBlur > 0);
         FolderTextBox.Text = sourceFolder;
         FolderPanel.Visibility = Visibility.Collapsed;
         BackgroundColorTextBox.Text = $"#{backgroundColor.R:X2}{backgroundColor.G:X2}{backgroundColor.B:X2}";
@@ -264,7 +271,7 @@ public partial class SettingsWindow : Window
         FenceTitle = title;
         FenceIcon = icon;
         StoreEditedDimensions();
-        FenceBackgroundBlur = BlurSlider.Value;
+        FenceBackgroundBlur = BlurCheckBox.IsChecked == true ? 1 : 0;
         FenceSingleWidth = _singleWidth;
         FenceSingleHeight = _singleHeight;
         FenceMultiWidth = _multiWidth;
@@ -321,9 +328,13 @@ public partial class SettingsWindow : Window
         BackgroundColorTextBox.Text = "#0B0E12";
         _borderOpacity = 0;
         BorderColorTextBox.Text = "#FFFFFF";
+        _loadingBlur = true;
+        BlurCheckBox.IsChecked = false;
+        _loadingBlur = false;
+        _opacityBeforeBlur = null;
+        ApplyRadiusMode(false);
         BorderRadiusSlider.Value = 11;
         BorderThicknessSlider.Value = 0;
-        BlurSlider.Value = 0;
         UpdateBackgroundPreview();
         UpdateBorderPreview();
         RaisePreviewChanged();
@@ -617,29 +628,68 @@ public partial class SettingsWindow : Window
         RaisePreviewChanged();
     }
 
-    private void BlurSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    /// <summary>
+    /// Turning the blur on makes the panel background (almost) transparent so the blur is visible; the
+    /// previous opacity comes back when it is switched off again, unless the user changed it meanwhile.
+    /// </summary>
+    private void BlurCheckBox_Changed(object sender, RoutedEventArgs e)
     {
-        if (!IsInitialized)
+        if (!IsInitialized || _loadingBlur)
             return;
 
-        UpdateBlurText();
+        if (BlurCheckBox.IsChecked == true)
+        {
+            _opacityBeforeBlur ??= _backgroundOpacity;
+            _backgroundOpacity = BlurBackgroundOpacity;
+        }
+        else
+        {
+            if (_opacityBeforeBlur is double previous &&
+                Math.Abs(_backgroundOpacity - BlurBackgroundOpacity) < 0.0001)
+            {
+                _backgroundOpacity = previous;
+            }
+
+            _opacityBeforeBlur = null;
+        }
+
+        ApplyRadiusMode(BlurCheckBox.IsChecked == true);
+        UpdateBackgroundPreview();
         RaisePreviewChanged();
     }
 
-    private void UpdateBlurText()
+    private static double SnapBlurRadius(double radius) => radius < 2 ? 0 : radius < 6 ? 4 : 8;
+
+    /// <summary>
+    /// With blur on the panel corners can only be 0, 4 or 8 px (all Windows draws for the blur window),
+    /// so the radius slider becomes a three-position slider; switching blur off restores the full range.
+    /// </summary>
+    private void ApplyRadiusMode(bool blurOn)
     {
-        var value = Math.Round(BlurSlider.Value);
-        BlurValueText.Text = value.ToString(CultureInfo.CurrentCulture);
-        var level = value switch
+        if (blurOn)
         {
-            < 1 => "Brak",
-            < 10 => "Bardzo lekkie",
-            < 20 => "Lekkie",
-            < 30 => "Średnie",
-            < 40 => "Mocne",
-            _ => "Bardzo mocne"
-        };
-        BlurLevelText.Text = LocalizationService.T(level);
+            _radiusBeforeBlur ??= BorderRadiusSlider.Value;
+            BorderRadiusSlider.Maximum = 8;
+            BorderRadiusSlider.TickFrequency = 4;
+            BorderRadiusSlider.IsSnapToTickEnabled = true;
+            BorderRadiusSlider.Value = SnapBlurRadius(BorderRadiusSlider.Value);
+            BlurRadiusDots.Visibility = Visibility.Visible;
+            BlurRadiusLabels.Visibility = Visibility.Visible;
+            return;
+        }
+
+        BorderRadiusSlider.IsSnapToTickEnabled = false;
+        BorderRadiusSlider.Maximum = 30;
+        BorderRadiusSlider.TickFrequency = 1;
+        BlurRadiusDots.Visibility = Visibility.Collapsed;
+        BlurRadiusLabels.Visibility = Visibility.Collapsed;
+        if (_radiusBeforeBlur is double previous &&
+            Math.Abs(BorderRadiusSlider.Value - SnapBlurRadius(previous)) < 0.01)
+        {
+            BorderRadiusSlider.Value = previous;
+        }
+
+        _radiusBeforeBlur = null;
     }
 
     private void DimensionMode_Checked(object sender, RoutedEventArgs e)
@@ -1020,7 +1070,7 @@ public partial class SettingsWindow : Window
             _iconFontOpacity,
             IconBoldFontCheckBox.IsChecked == true,
             IconLetterSpacingSlider.Value,
-            BlurSlider.Value));
+            BlurCheckBox.IsChecked == true ? 1 : 0));
     }
 }
 

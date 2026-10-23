@@ -25,6 +25,8 @@ public partial class CreatorWindow : Window
     public event EventHandler? NewPanelRequested;
     public event EventHandler? SettingsRequested;
     public event EventHandler? WallpaperRequested;
+    public event EventHandler? ShowNotificationRequested;
+    public event EventHandler? ToggleNotificationWindowRequested;
 
     public CreatorWindow(
         bool hideHeader,
@@ -37,7 +39,7 @@ public partial class CreatorWindow : Window
     {
         InitializeComponent();
         Icon = AppIconProvider.Image;
-        Width = 360;
+        Width = 462;
         Height = 160;
         IsHeaderHidden = hideHeader;
         BackgroundColor = backgroundColor;
@@ -189,6 +191,11 @@ public partial class CreatorWindow : Window
         e.Handled = true;
     }
 
+    private void ShowNotificationButton_Click(object sender, RoutedEventArgs e) =>
+        ShowNotificationRequested?.Invoke(this, EventArgs.Empty);
+
+    private void ToggleNotificationWindowButton_Click(object sender, RoutedEventArgs e) =>
+        ToggleNotificationWindowRequested?.Invoke(this, EventArgs.Empty);
     private void SettingsButton_Click(object sender, RoutedEventArgs e)
     {
         SettingsRequested?.Invoke(this, EventArgs.Empty);

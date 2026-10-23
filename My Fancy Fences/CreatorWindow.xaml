@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:iconPacks="http://metro.mahapps.com/winfx/xaml/iconpacks"
         Title="Kreator"
-        Width="360"
+        Width="462"
         Height="160"
         WindowStyle="None"
         AllowsTransparency="True"
@@ -103,7 +103,7 @@
 
             <UniformGrid Grid.Row="1"
                          Rows="1"
-                         Columns="3"
+                         Columns="5"
                          Margin="12,0,12,12"
                          HorizontalAlignment="Center">
                 <Grid>
@@ -160,6 +160,44 @@
                                                      VerticalAlignment="Center"/>
                         </Border>
                         <TextBlock Text="Zarządzaj" Margin="0,8,0,0" FontSize="11" TextAlignment="Center"/>
+                    </StackPanel>
+                </Button>
+                </Grid>
+                <Grid>
+                <Button Style="{StaticResource CreatorTileStyle}"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Click="ShowNotificationButton_Click">
+                    <StackPanel VerticalAlignment="Center">
+                        <Border Style="{StaticResource CreatorIconGlowStyle}">
+                            <iconPacks:PackIconLucide Kind="Bell"
+                                                     Width="{DynamicResource CreatorIconSize}"
+                                                     Height="{DynamicResource CreatorIconSize}"
+                                                     Opacity=".72"
+                                                     Foreground="White"
+                                                     HorizontalAlignment="Center"
+                                                     VerticalAlignment="Center"/>
+                        </Border>
+                        <TextBlock Text="Powiadomienie" Margin="0,8,0,0" FontSize="11" TextAlignment="Center"/>
+                    </StackPanel>
+                </Button>
+                </Grid>
+                <Grid>
+                <Button Style="{StaticResource CreatorTileStyle}"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Click="ToggleNotificationWindowButton_Click">
+                    <StackPanel VerticalAlignment="Center">
+                        <Border Style="{StaticResource CreatorIconGlowStyle}">
+                            <iconPacks:PackIconLucide Kind="AppWindow"
+                                                     Width="{DynamicResource CreatorIconSize}"
+                                                     Height="{DynamicResource CreatorIconSize}"
+                                                     Opacity=".72"
+                                                     Foreground="White"
+                                                     HorizontalAlignment="Center"
+                                                     VerticalAlignment="Center"/>
+                        </Border>
+                        <TextBlock Text="Okno powiad." Margin="0,8,0,0" FontSize="11" TextAlignment="Center"/>
                     </StackPanel>
                 </Button>
                 </Grid>

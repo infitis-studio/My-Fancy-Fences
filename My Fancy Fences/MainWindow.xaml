@@ -135,13 +135,6 @@
         </Style>
     </Window.Resources>
 
-    <Grid>
-    <Border x:Name="BlurBackdrop"
-            Margin="9"
-            CornerRadius="11"
-            IsHitTestVisible="False"
-            Visibility="Collapsed"/>
-
     <Border x:Name="FenceBorder"
             Margin="9"
             CornerRadius="11"
@@ -154,10 +147,12 @@
                 <RowDefinition x:Name="ContentRow" Height="*"/>
             </Grid.RowDefinitions>
 
+            <!-- 1/255 alpha instead of Transparent: fully transparent pixels of a layered window let the mouse
+                 fall through, so a panel with 0% background opacity would not react to header clicks. -->
             <Border x:Name="DragSurface"
                     Grid.Row="0"
                     CornerRadius="10,10,0,0"
-                    Background="Transparent"
+                    Background="#01000000"
                     MouseLeftButtonDown="DragSurface_MouseLeftButtonDown"
                     MouseLeftButtonUp="DragSurface_MouseLeftButtonUp"
                     MouseMove="DragSurface_MouseMove">
@@ -379,5 +374,4 @@
 
         </Grid>
     </Border>
-    </Grid>
 </Window>
