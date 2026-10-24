@@ -18,27 +18,49 @@
 
 ---
 
-## Screenshots
+## 📸 Screenshots
 
-### 🖥️ Desktop panels
+### 🗂️ Layouts you can switch with a hotkey
 
-![My Fancy Fences desktop panels](assets/screenshots/desktop-panels.png)
+Save as many layouts as you like and jump between them instantly. Here `Alt + H` shows the **Home** layout and `Alt + W` switches to **Work**.
+
+| Home (`Alt + H`) | Work (`Alt + W`) |
+| :---: | :---: |
+| ![Home layout](assets/screenshots/home.png) | ![Work layout](assets/screenshots/work.png) |
+
+### 🎨 Your panels, your style
+
+Colors, transparency, rounded corners, blur, fonts, and icon size — change the look of every panel, together with the wallpaper.
+
+![Panel styles and wallpaper](assets/screenshots/style.png)
 
 ### 🌄 Wallpaper browser
 
-![My Fancy Fences wallpaper browser](assets/screenshots/wallpaper-browser.png)
+Browse, search, favorite, and set wallpapers without leaving the app.
+
+![Wallpaper browser](assets/screenshots/wallpapers.png)
+
+### 🎞️ Live wallpapers
+
+Animated wallpapers play right behind your panels.
+
+![Live wallpaper](assets/screenshots/live.gif)
 
 ## ✨ Features
 
 - 🧩 Create clean desktop panels for apps, files, folders, and shortcuts
-- 🖱️ Drag and drop items directly onto panels
+- 🖱️ Drag and drop items directly onto panels, rename them, or move them back to the desktop
 - 🗂️ Save multiple desktop layouts and switch between them instantly
 - ⌨️ Assign global hotkeys for layout switching
-- 🎨 Customize colors, transparency, borders, typography, and icon size
+- 🖥️ Separate panel positions and sizes for single-monitor and multi-monitor setups, restored automatically when a monitor is connected or switched off
+- 🎨 Customize colors, transparency, borders, corner radius, background blur, typography, and icon size
+- 🔒 Lock all panels so nothing moves by accident
 - 🌄 Browse, favorite, download, and set wallpapers inside the app
 - 🎞️ Set static wallpapers and experimental live wallpapers
-- ⚙️ Manage everything from one polished management window
-- 📦 Use tray controls, optional startup, import/export, and automatic backups
+- 🔄 Update from inside the app: you are notified when a new version is available and can install it in one click
+- 🚀 Optional startup with Windows, controlled from settings or the tray menu
+- 📦 Use tray controls, import/export, and automatic backups
+- 🌍 Available in 12 languages, using your Windows language by default
 
 ## 🖼️ Wallpaper Sources
 
@@ -51,10 +73,15 @@ Wallpapers remain the property of their original owners. My Fancy Fences does no
 
 ## 🚀 Quick Start
 
-### Requirements
+### Install
 
-- Windows 10 or Windows 11
-- .NET 10 is included in the EXE; no separate runtime installation is needed
+1. Download the latest **Setup EXE** from the [Releases](https://github.com/infitis-studio/my-fancy-fences/releases/latest) page.
+2. Run it. It installs for your user account, so no administrator prompt is needed.
+3. If the Microsoft .NET 10 Desktop Runtime is missing, Setup downloads it for you.
+
+On the first launch the app pins its tray icon and shows a short hint about how to open the management window.
+
+Requirements: Windows 10 or Windows 11.
 
 ### Build and run
 
@@ -66,11 +93,12 @@ dotnet run --project "My Fancy Fences/My Fancy Fences.csproj"
 ## 🧭 Usage
 
 - Double-click a panel header to edit that panel.
-- Use the management window to edit panels, browse wallpapers, change shared appearance, and import/export settings.
+- Right-click an icon to rename it, move it to the desktop, or remove it from the panel.
 - Click the empty-panel prompt or drag files/apps/shortcuts onto a panel to create shortcuts.
 - Choose single-click or double-click activation for panel items.
+- Use the management window to edit panels and layouts, browse wallpapers, change the shared appearance, and import/export settings.
 - Double-click the tray icon to open the management window.
-- Right-click the tray icon to manage startup, open tools, or close the application.
+- Right-click the tray icon to open settings, add a panel, lock all panels, toggle startup with Windows, or close the application.
 
 ## 🛠️ Built With
 
@@ -82,6 +110,10 @@ dotnet run --project "My Fancy Fences/My Fancy Fences.csproj"
 ## 🧪 Project Status
 
 My Fancy Fences is under active development and may still contain bugs. Features and saved-settings formats may change between versions.
+
+## ☕ Support
+
+If the app is useful to you, you can support a small independent developer on [Ko-fi](https://ko-fi.com/infitisstudio).
 
 ## 🤝 Contributing
 
