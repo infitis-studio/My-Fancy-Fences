@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using System.Text.Json;
 
 namespace My_Fancy_Fences;
@@ -17,10 +17,7 @@ public static class SupportReminderService
     private const int RemindLaterDays = 30;
     private static readonly string StatePath = Path.Combine(ShortcutLibraryService.AppDataDirectory, "support-reminder.json");
 
-    // Test default: a date in 2025, so the reminder can appear right away. A real installation would use DateTime.Now.
-    private static readonly DateTime DefaultFirstLaunchDate = new(2025, 6, 1);
-
-    private static State _state = new(DefaultFirstLaunchDate, null, false);
+    private static State _state = new(DateTime.Now, null, true);
 
     private sealed record State(DateTime FirstLaunchDate, DateTime? NextReminderDate, bool NeverRemind);
 
@@ -34,13 +31,13 @@ public static class SupportReminderService
                 return;
             }
 
-            _state = new State(DefaultFirstLaunchDate, null, false);
+            _state = new State(DateTime.Now, null, false);
             Save();
         }
         catch
         {
             // When the state cannot be read, do nothing rather than nag the user on every launch.
-            _state = new State(DefaultFirstLaunchDate, null, true);
+            _state = new State(DateTime.Now, null, true);
         }
     }
 
