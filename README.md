@@ -24,6 +24,8 @@
 
 Save as many layouts as you like and jump between them instantly. Here `Alt + H` shows the **Home** layout and `Alt + W` switches to **Work**.
 
+> **Note:** `Alt + H` and `Alt + W` are only examples. No hotkeys are set by default — assign your own for each layout in the **Shortcuts** tab of the management window.
+
 | Home (`Alt + H`) | Work (`Alt + W`) |
 | :---: | :---: |
 | ![Home layout](assets/screenshots/home.png) | ![Work layout](assets/screenshots/work.png) |
