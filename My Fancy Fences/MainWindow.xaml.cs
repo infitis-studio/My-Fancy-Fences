@@ -57,7 +57,6 @@ public partial class MainWindow : Window
     private const uint TpmRightButton = 0x0002;
     private const uint TpmReturnCommand = 0x0100;
     private const uint TrayExitCommand = 1;
-    private const uint TrayCreatorCommand = 2;
     private const uint TrayAutoStartCommand = 3;
     private const uint TraySettingsCommand = 4;
     private const uint TrayNewPanelCommand = 6;
@@ -115,9 +114,6 @@ public partial class MainWindow : Window
     private bool? _placementIsMulti;
     private System.Windows.Threading.DispatcherTimer? _monitorWatchTimer;
     private string _monitorSignature = string.Empty;
-    private double? _creatorSingleLeft;
-    private double? _creatorSingleTop;
-    private bool? _creatorPlacementIsMulti;
     private System.Windows.Threading.DispatcherTimer? _displayChangeTimer;
     private bool _backgroundBlur;
     private BlurHost? _blurHost;
@@ -136,22 +132,12 @@ public partial class MainWindow : Window
     private double _resizeStartHeight;
     private NotifyIconData _trayIconData;
     private IntPtr _trayIconHandle;
-    private CreatorWindow? _creatorWindow;
     private PanelsWindow? _panelsWindow;
     private bool _showMainPanel = true;
-    private bool _showCreatorPanel;
-    private bool _creatorHideHeader;
-    private double? _creatorLeft;
-    private double? _creatorTop;
-    private const double CreatorPanelWidth = 462;
-    private const double CreatorPanelHeight = 160;
-    private Color _creatorBackgroundColor = Color.FromRgb(0x0B, 0x0E, 0x12);
-    private double _creatorBackgroundOpacity = 0.58;
     private bool? _globalPreviewOriginalHeaderHidden;
     private Color? _globalPreviewOriginalBackgroundColor;
     private double? _globalPreviewOriginalBackgroundOpacity;
     private Dictionary<MainWindow, GlobalPanelAppearanceSnapshot>? _globalPreviewOriginalPanelAppearances;
-    private (bool HideHeader, Color BackgroundColor, double BackgroundOpacity)? _globalPreviewOriginalCreatorAppearance;
     private readonly bool _isPrimaryWindow;
     private readonly int _newPanelIndex;
     private readonly Action? _requestHostSave;
@@ -271,7 +257,6 @@ public partial class MainWindow : Window
             if (IsLoaded)
             {
                 SeparateOverlappingFallbackPanels();
-                UpdateCreatorPanelVisibility();
             }
 
             _ = CompactMemoryAfterStartupAsync();
@@ -279,7 +264,24 @@ public partial class MainWindow : Window
                 _ = ShowFirstRunNoticeAsync();
             if (FirstRunService.TrayPromotionPending)
                 _ = FirstRunService.EnsureTrayIconVisibleAsync();
+            _ = ShowUpdateNoticeAsync();
         }
+    }
+
+    /// <summary>Announces a newer release about 10 seconds after launch, so it never interrupts the start.</summary>
+    private async Task ShowUpdateNoticeAsync()
+    {
+        var update = await UpdateService.CheckAsync();
+        if (!update.Success || !update.IsUpdateAvailable)
+            return;
+
+        await Task.Delay(TimeSpan.FromSeconds(10));
+        if (!IsLoaded)
+            return;
+
+        _updateNoticeWindow = new UpdateNoticeWindow(update);
+        _updateNoticeWindow.Closed += (_, _) => _updateNoticeWindow = null;
+        _updateNoticeWindow.Show();
     }
 
     /// <summary>First launch of a fresh installation: tell the user how to open the management window.</summary>
@@ -410,13 +412,6 @@ public partial class MainWindow : Window
         _ = Dispatcher.BeginInvoke(async () =>
         {
             await RestoreTrayIconAfterShellChangeAsync();
-            if (_showCreatorPanel)
-            {
-                UpdateCreatorPanelVisibility();
-                if (_creatorWindow is { IsLoaded: true, IsVisible: true })
-                    _ = _creatorWindow.StabilizeDesktopLevelAsync();
-            }
-
             _ = StabilizeDesktopLevelAsync();
             foreach (var panel in _additionalPanels.Where(panel => panel.IsLoaded && panel.IsVisible))
                 _ = panel.StabilizeDesktopLevelAsync();
@@ -603,11 +598,6 @@ public partial class MainWindow : Window
             AppendMenu(menu, MfSeparator, 0, string.Empty);
             AppendMenu(
                 menu,
-                MfString | (_showCreatorPanel ? MfChecked : 0),
-                TrayCreatorCommand,
-                LocalizationService.T("Pokaż panel kreatora"));
-            AppendMenu(
-                menu,
                 MfString | (IsAutoStartEnabled() ? MfChecked : 0),
                 TrayAutoStartCommand,
                 LocalizationService.T("Uruchamiaj przy starcie systemu"));
@@ -634,14 +624,8 @@ public partial class MainWindow : Window
                 CreateNewPanelFromTray();
             else if (command == TrayLockPanelsCommand)
                 ToggleAllPanelsLock();
-            else if (command == TrayCreatorCommand)
-            {
-                _showCreatorPanel = !_showCreatorPanel;
-                UpdateCreatorPanelVisibility();
-                SaveSettings();
-            }
             else if (command == TrayAutoStartCommand)
-                SetAutoStartEnabled(!IsAutoStartEnabled());
+                ApplyAutoStart(!IsAutoStartEnabled());
             else if (command == TrayExitCommand)
                 Application.Current.Shutdown();
         }
@@ -654,13 +638,7 @@ public partial class MainWindow : Window
     }
 
     private NotificationWindow? _notificationWindow;
-
-    /// <summary>Shows or hides the own notification window (a plain rectangle for now).</summary>
-    private void ToggleNotificationWindow()
-    {
-        _notificationWindow ??= new NotificationWindow();
-        _notificationWindow.ToggleVisibility();
-    }
+    private UpdateNoticeWindow? _updateNoticeWindow;
 
     private void ToggleAllPanelsLock()
     {
@@ -718,6 +696,13 @@ public partial class MainWindow : Window
         {
             return false;
         }
+    }
+
+    /// <summary>Changes the startup registration (the single source of truth) and refreshes the settings checkbox.</summary>
+    private void ApplyAutoStart(bool enabled)
+    {
+        SetAutoStartEnabled(enabled);
+        _panelsWindow?.SetAutoStartState(IsAutoStartEnabled());
     }
 
     private static void SetAutoStartEnabled(bool enabled)
@@ -882,58 +867,6 @@ public partial class MainWindow : Window
     private IEnumerable<MainWindow> GetAllPanelWindows() =>
         new[] { this }.Concat(_additionalPanels.Where(panel => panel.IsLoaded && !panel._isPendingCreation));
 
-    private void SyncCreatorPlacement()
-    {
-        if (_creatorWindow is null ||
-            !_creatorWindow.IsLoaded ||
-            MonitorLayoutService.IsPositionSyncSuppressed ||
-            _creatorPlacementIsMulti != MonitorLayoutService.IsMultiMonitor ||
-            double.IsNaN(_creatorWindow.Left) ||
-            double.IsNaN(_creatorWindow.Top))
-        {
-            return;
-        }
-
-        if (_creatorPlacementIsMulti == true)
-        {
-            _creatorLeft = _creatorWindow.Left;
-            _creatorTop = _creatorWindow.Top;
-        }
-        else
-        {
-            _creatorSingleLeft = _creatorWindow.Left;
-            _creatorSingleTop = _creatorWindow.Top;
-        }
-    }
-
-    private (double? Left, double? Top) GetCreatorProfilePosition()
-    {
-        if (MonitorLayoutService.IsMultiMonitor)
-            return (_creatorLeft, _creatorTop);
-
-        return (_creatorSingleLeft ?? _creatorLeft, _creatorSingleTop ?? _creatorTop);
-    }
-
-    private void ApplyCreatorProfilePosition()
-    {
-        if (_creatorWindow is null || !_creatorWindow.IsLoaded)
-            return;
-
-        var (left, top) = GetCreatorProfilePosition();
-        if (left.HasValue && top.HasValue)
-        {
-            var (safeLeft, safeTop) = MonitorLayoutService.EnsureVisible(
-                left.Value,
-                top.Value,
-                _creatorWindow.Width,
-                _creatorWindow.Height);
-            _creatorWindow.Left = safeLeft;
-            _creatorWindow.Top = safeTop;
-        }
-
-        _creatorPlacementIsMulti = MonitorLayoutService.IsMultiMonitor;
-    }
-
     private void SystemEvents_DisplaySettingsChanged(object? sender, EventArgs e)
     {
         // Windows relocates windows itself while displays change; do not persist those moves.
@@ -1034,7 +967,6 @@ public partial class MainWindow : Window
         foreach (var panel in GetAllPanelWindows())
             panel.ApplyProfilePosition();
 
-        ApplyCreatorProfilePosition();
         SeparateOverlappingFallbackPanels();
     }
 
@@ -1443,10 +1375,117 @@ public partial class MainWindow : Window
             }
         }
 
-        var icon = GetShellIconCore(path, useFileAttributes: false);
+        // The shell icon of a .lnk file carries the shortcut arrow; use the icon of its target instead.
+        var icon = string.Equals(Path.GetExtension(path), ".lnk", StringComparison.OrdinalIgnoreCase)
+            ? TryGetShortcutTargetIcon(path)
+            : null;
+        icon ??= GetShellIconCore(path, useFileAttributes: false);
         if (icon is not null)
             CacheIcon(path, icon);
         return icon;
+    }
+
+    private static ImageSource? TryGetShortcutTargetIcon(string shortcutPath)
+    {
+        try
+        {
+            var shellType = Type.GetTypeFromProgID("WScript.Shell");
+            if (shellType is null)
+                return null;
+
+            dynamic shell = Activator.CreateInstance(shellType)!;
+            dynamic shortcut = shell.CreateShortcut(shortcutPath);
+            string iconLocation = shortcut.IconLocation as string ?? string.Empty;
+            string targetPath = shortcut.TargetPath as string ?? string.Empty;
+
+            // IconLocation is "file,index"; an empty file part means the target's own icon.
+            var separator = iconLocation.LastIndexOf(',');
+            var iconFile = Environment.ExpandEnvironmentVariables(
+                (separator >= 0 ? iconLocation[..separator] : iconLocation).Trim().Trim('"'));
+            var iconIndex = separator >= 0 && int.TryParse(iconLocation[(separator + 1)..], out var parsed) ? parsed : 0;
+            if (!string.IsNullOrWhiteSpace(iconFile) && File.Exists(iconFile))
+            {
+                var customIcon = ExtractIconEx(iconFile, iconIndex, out var large, IntPtr.Zero, 1) > 0 && large != IntPtr.Zero
+                    ? CreateIconSource(large)
+                    : null;
+                if (customIcon is not null)
+                    return customIcon;
+            }
+
+            if (!string.IsNullOrWhiteSpace(targetPath) &&
+                (File.Exists(targetPath) || Directory.Exists(targetPath)))
+            {
+                return GetShellIconCore(targetPath, useFileAttributes: false);
+            }
+        }
+        catch
+        {
+            // Fall back to the shell item icon below.
+        }
+
+        return TryGetShortcutItemIcon(shortcutPath);
+    }
+
+    /// <summary>
+    /// Shortcuts without a file target (for example Microsoft Store apps) point at a shell item. The icon of
+    /// that item is the app's own icon, without the arrow of the .lnk file.
+    /// </summary>
+    private static ImageSource? TryGetShortcutItemIcon(string shortcutPath)
+    {
+        const uint shgfiIcon = 0x000000100;
+        const uint shgfiPidl = 0x000000008;
+        var pidl = IntPtr.Zero;
+        try
+        {
+            var link = (IShellLinkW)new ShellLinkObject();
+            ((System.Runtime.InteropServices.ComTypes.IPersistFile)link).Load(shortcutPath, 0);
+            link.GetIDList(out pidl);
+            if (pidl == IntPtr.Zero)
+                return null;
+
+            var result = SHGetFileInfoPidl(pidl, 0, out var fileInfo, (uint)Marshal.SizeOf<ShFileInfo>(), shgfiIcon | shgfiPidl);
+            return result == IntPtr.Zero || fileInfo.IconHandle == IntPtr.Zero
+                ? null
+                : CreateIconSource(fileInfo.IconHandle);
+        }
+        catch
+        {
+            return null;
+        }
+        finally
+        {
+            if (pidl != IntPtr.Zero)
+                Marshal.FreeCoTaskMem(pidl);
+        }
+    }
+
+    [ComImport, Guid("000214F9-0000-0000-C000-000000000046"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    private interface IShellLinkW
+    {
+        void GetPath(IntPtr file, int maxLength, IntPtr findData, uint flags);
+        void GetIDList(out IntPtr pidl);
+    }
+
+    [ComImport, Guid("00021401-0000-0000-C000-000000000046")]
+    private class ShellLinkObject
+    {
+    }
+
+    private static ImageSource? CreateIconSource(IntPtr iconHandle)
+    {
+        try
+        {
+            var icon = Imaging.CreateBitmapSourceFromHIcon(
+                iconHandle,
+                Int32Rect.Empty,
+                BitmapSizeOptions.FromWidthAndHeight(48, 48));
+            icon.Freeze();
+            return icon;
+        }
+        finally
+        {
+            DestroyIcon(iconHandle);
+        }
     }
 
     private static ImageSource? GetCachedShortcutIcon(string shortcutId)
@@ -1726,6 +1765,27 @@ public partial class MainWindow : Window
             };
             error.ShowDialog();
         }
+    }
+
+    private void RenameDesktopItemMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        var shortcutId = _contextShortcutId;
+        var currentName = _contextItemName;
+        ItemActionsPopup.IsOpen = false;
+        if (string.IsNullOrWhiteSpace(shortcutId))
+            return;
+
+        var dialog = new RenameWindow(LocalizationService.T("Zmień nazwę panelu"), currentName ?? string.Empty)
+        {
+            Owner = this
+        };
+        if (dialog.ShowDialog() != true)
+            return;
+
+        ShortcutLibraryService.RenameShortcut(shortcutId, dialog.NewName);
+        foreach (var panel in GetAllPanelWindows())
+            panel.LoadDesktopItems();
+        _panelsWindow?.UpdatePanels(CreatePanelOverviewList());
     }
 
     private void RemoveDesktopItemFromPanel(string path, string shortcutId)
@@ -2800,19 +2860,8 @@ public partial class MainWindow : Window
             _multiHeight = settings.Height;
             _singleWidth = settings.SingleWidth;
             _singleHeight = settings.SingleHeight;
-            _creatorSingleLeft = settings.CreatorSingleLeft;
-            _creatorSingleTop = settings.CreatorSingleTop;
             PanelLockService.IsLocked = settings.PanelsLocked ?? false;
-            _showCreatorPanel = settings.ShowCreatorPanel;
             _showMainPanel = settings.ShowMainPanel ?? true;
-            _creatorHideHeader = settings.CreatorHideHeader;
-            _creatorLeft = settings.CreatorLeft;
-            _creatorTop = settings.CreatorTop;
-            if (!string.IsNullOrWhiteSpace(settings.CreatorBackgroundHex))
-            {
-                _creatorBackgroundColor = (Color)ColorConverter.ConvertFromString(settings.CreatorBackgroundHex);
-                _creatorBackgroundOpacity = Math.Clamp(settings.CreatorBackgroundOpacity, 0, 1);
-            }
             var savedColor = (Color)ColorConverter.ConvertFromString(settings.BackgroundHex);
             ApplyBackground(savedColor, settings.BackgroundOpacity);
             ApplyBackgroundBlur((settings.BackgroundBlur ?? 0) > 0);
@@ -2962,7 +3011,6 @@ public partial class MainWindow : Window
             if (directory is not null)
                 Directory.CreateDirectory(directory);
 
-            SyncCreatorPlacement();
             UpdateActiveLayoutSnapshot();
             SyncPlacement();
 
@@ -2979,16 +3027,6 @@ public partial class MainWindow : Window
                 _iconSize,
                 _multiLeft ?? Left,
                 _multiTop ?? Top,
-                _showCreatorPanel,
-                _creatorWindow?.IsHeaderHidden ?? _creatorHideHeader,
-                _creatorLeft,
-                _creatorTop,
-                CreatorPanelWidth,
-                CreatorPanelHeight,
-                _creatorWindow is null
-                    ? $"#{_creatorBackgroundColor.R:X2}{_creatorBackgroundColor.G:X2}{_creatorBackgroundColor.B:X2}"
-                    : $"#{_creatorWindow.BackgroundColor.R:X2}{_creatorWindow.BackgroundColor.G:X2}{_creatorWindow.BackgroundColor.B:X2}",
-                _creatorWindow?.BackgroundOpacity ?? _creatorBackgroundOpacity,
                 _showMainPanel,
                 null,
                 _fontFamilyName,
@@ -3013,8 +3051,6 @@ public partial class MainWindow : Window
                 _singleLeft,
                 _singleTop,
                 _multiMonitor,
-                _creatorSingleLeft,
-                _creatorSingleTop,
                 _singleWidth,
                 _singleHeight,
                 PanelLockService.IsLocked,
@@ -3101,14 +3137,6 @@ public partial class MainWindow : Window
         double IconSize,
         double Left,
         double Top,
-        bool ShowCreatorPanel,
-        bool CreatorHideHeader,
-        double? CreatorLeft,
-        double? CreatorTop,
-        double CreatorWidth,
-        double CreatorHeight,
-        string? CreatorBackgroundHex,
-        double CreatorBackgroundOpacity,
         bool? ShowMainPanel,
         List<SavedPanelSettings>? AdditionalPanels,
         string? FontFamilyName,
@@ -3133,8 +3161,6 @@ public partial class MainWindow : Window
         double? SingleLeft = null,
         double? SingleTop = null,
         string? MonitorDevice = null,
-        double? CreatorSingleLeft = null,
-        double? CreatorSingleTop = null,
         double? SingleWidth = null,
         double? SingleHeight = null,
         bool? PanelsLocked = null,
@@ -3636,46 +3662,6 @@ public partial class MainWindow : Window
         _panelsWindow?.UpdateLayoutShortcuts(_layoutShortcuts);
     }
 
-    private void UpdateCreatorPanelVisibility()
-    {
-        if (_showCreatorPanel)
-        {
-            if (_creatorWindow is null)
-            {
-                var creatorPosition = GetCreatorProfilePosition();
-                _creatorPlacementIsMulti = MonitorLayoutService.IsMultiMonitor;
-                _creatorWindow = new CreatorWindow(
-                    _creatorHideHeader,
-                    CreatorPanelWidth,
-                    CreatorPanelHeight,
-                    creatorPosition.Left,
-                    creatorPosition.Top,
-                    _creatorBackgroundColor,
-                    _creatorBackgroundOpacity);
-                _creatorWindow.CreatorStateChanged += (_, _) => SaveSettings();
-                _creatorWindow.NewPanelRequested += (_, _) =>
-                {
-                    var panel = CreateAdditionalPanel(pendingCreation: true);
-                    panel.Dispatcher.BeginInvoke(
-                        System.Windows.Threading.DispatcherPriority.ApplicationIdle,
-                        () => panel.OpenSettings(true));
-                };
-                _creatorWindow.SettingsRequested += (_, _) => OpenPanelsWindow();
-                _creatorWindow.WallpaperRequested += (_, _) => OpenPanelsWindow("Wallpaper");
-                _creatorWindow.ShowNotificationRequested += (_, _) =>
-                    ShowTrayNotification("To jest testowe powiadomienie z My Fancy Fences.");
-                _creatorWindow.ToggleNotificationWindowRequested += (_, _) => ToggleNotificationWindow();
-            }
-
-            if (!_creatorWindow.IsVisible)
-                _creatorWindow.Show();
-        }
-        else if (_creatorWindow?.IsVisible == true)
-        {
-            _creatorWindow.Hide();
-        }
-    }
-
     private void OpenPanelsWindow(string? initialTab = null)
     {
         var panels = CreatePanelOverviewList();
@@ -3728,6 +3714,7 @@ public partial class MainWindow : Window
             _panelsWindow.RefreshIconsRequested += (_, _) => RefreshAllPanelIcons();
             _panelsWindow.ActivationModeChanged += (_, args) =>
                 SetDoubleClickActivation(args.UseDoubleClickToOpen);
+            _panelsWindow.AutoStartChanged += (_, enabled) => ApplyAutoStart(enabled);
             _panelsWindow.Closed += (_, _) => _panelsWindow = null;
         }
         else
@@ -3737,6 +3724,7 @@ public partial class MainWindow : Window
             _panelsWindow.UpdateLayoutShortcuts(_layoutShortcuts);
         }
 
+        _panelsWindow.SetAutoStartState(IsAutoStartEnabled());
         if (!_panelsWindow.IsVisible)
             _panelsWindow.Show();
 
@@ -3952,13 +3940,6 @@ public partial class MainWindow : Window
                 .ToDictionary(
                     panel => panel,
                     panel => panel.CreateGlobalAppearanceSnapshot());
-            if (_creatorWindow is not null)
-            {
-                _globalPreviewOriginalCreatorAppearance = (
-                    _creatorWindow.IsHeaderHidden,
-                    _creatorWindow.BackgroundColor,
-                    _creatorWindow.BackgroundOpacity);
-            }
         }
 
         if (e.Phase == GlobalAppearancePhase.Cancel)
@@ -3982,15 +3963,12 @@ public partial class MainWindow : Window
             panel.ApplyIconSize(e.IconSize);
         }
 
-        ApplyCreatorGlobalAppearance(e);
-
         if (e.Phase == GlobalAppearancePhase.Commit)
         {
             _globalPreviewOriginalHeaderHidden = null;
             _globalPreviewOriginalBackgroundColor = null;
             _globalPreviewOriginalBackgroundOpacity = null;
             _globalPreviewOriginalPanelAppearances = null;
-            _globalPreviewOriginalCreatorAppearance = null;
             SaveSettings();
         }
     }
@@ -4008,19 +3986,10 @@ public partial class MainWindow : Window
             }
         }
 
-        if (_creatorWindow is not null && _globalPreviewOriginalCreatorAppearance is { } creatorOriginal)
-        {
-            _creatorWindow.ApplyGlobalAppearance(
-                creatorOriginal.HideHeader,
-                creatorOriginal.BackgroundColor,
-                creatorOriginal.BackgroundOpacity);
-        }
-
         _globalPreviewOriginalHeaderHidden = null;
         _globalPreviewOriginalBackgroundColor = null;
         _globalPreviewOriginalBackgroundOpacity = null;
         _globalPreviewOriginalPanelAppearances = null;
-        _globalPreviewOriginalCreatorAppearance = null;
     }
 
     private IEnumerable<MainWindow> GetAllPanels()
@@ -4061,17 +4030,6 @@ public partial class MainWindow : Window
         ApplyIconFont(snapshot.IconFontFamilyName);
         ApplyIconTextAppearance(snapshot.IconFontColor, snapshot.IconFontOpacity, snapshot.IconFontBold, snapshot.IconLetterSpacing);
         ApplyIconSize(snapshot.IconSize);
-    }
-
-    private void ApplyCreatorGlobalAppearance(GlobalAppearanceEventArgs e)
-    {
-        if (_creatorWindow is null || _globalPreviewOriginalCreatorAppearance is not { } original)
-            return;
-
-        _creatorWindow.ApplyGlobalAppearance(
-            e.HideHeader,
-            e.BackgroundColor,
-            e.BackgroundOpacity);
     }
 
     private void ResizeArea_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -4320,6 +4278,22 @@ public partial class MainWindow : Window
         out ShFileInfo fileInfo,
         uint fileInfoSize,
         uint flags);
+
+    [DllImport("shell32.dll", EntryPoint = "SHGetFileInfoW")]
+    private static extern IntPtr SHGetFileInfoPidl(
+        IntPtr pidl,
+        uint fileAttributes,
+        out ShFileInfo fileInfo,
+        uint fileInfoSize,
+        uint flags);
+
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+    private static extern uint ExtractIconEx(
+        string file,
+        int iconIndex,
+        out IntPtr largeIcon,
+        IntPtr smallIcon,
+        uint iconCount);
 
     [DllImport("user32.dll")]
     private static extern bool DestroyIcon(IntPtr iconHandle);

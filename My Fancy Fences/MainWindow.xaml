@@ -198,7 +198,6 @@
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
                             <Button Style="{StaticResource TileStyle}"
-                                    ToolTip="{Binding Path}"
                                     Tag="{Binding Path}"
                                     PreviewMouseRightButtonUp="DesktopItem_MouseRightButtonUp"
                                     PreviewMouseLeftButtonDown="DesktopItem_MouseLeftButtonDown">
@@ -290,6 +289,46 @@
                                           Color="#FF000000"/>
                     </Border.Effect>
                     <StackPanel>
+                    <Button Height="38"
+                            Padding="11,0"
+                            Foreground="#FFE5E7EB"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            Cursor="Hand"
+                            HorizontalContentAlignment="Stretch"
+                            Click="RenameDesktopItemMenuItem_Click">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Border x:Name="ActionBackground"
+                                        Padding="{TemplateBinding Padding}"
+                                        CornerRadius="7"
+                                        Background="{TemplateBinding Background}">
+                                    <ContentPresenter HorizontalAlignment="Stretch"
+                                                      VerticalAlignment="Center"/>
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="ActionBackground" Property="Background" Value="#22FFFFFF"/>
+                                    </Trigger>
+                                    <Trigger Property="IsPressed" Value="True">
+                                        <Setter TargetName="ActionBackground" Property="Background" Value="#36FFFFFF"/>
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Button.Template>
+                        <StackPanel Orientation="Horizontal">
+                            <iconPacks:PackIconLucide Kind="Pencil"
+                                                       Width="16"
+                                                       Height="16"
+                                                       Margin="0,0,10,0"
+                                                       Foreground="#FFFCD34D"/>
+                            <TextBlock x:Name="RenameItemMenuText"
+                                       Text="Zmień nazwę"
+                                       FontSize="13"
+                                       FontWeight="SemiBold"
+                                       VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
                     <Button Height="38"
                             Padding="11,0"
                             Foreground="#FFE5E7EB"

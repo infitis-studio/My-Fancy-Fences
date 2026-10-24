@@ -78,6 +78,7 @@ public partial class PanelsWindow : Window
     public event EventHandler<GlobalAppearanceEventArgs>? GlobalAppearanceChanged;
     public event EventHandler? RefreshIconsRequested;
     public event EventHandler<ActivationModeChangedEventArgs>? ActivationModeChanged;
+    public event EventHandler<bool>? AutoStartChanged;
 
     public PanelsWindow(
         IReadOnlyList<PanelOverviewItem> panels,
@@ -183,6 +184,9 @@ public partial class PanelsWindow : Window
         RefreshIconsButton.Content = LocalizationService.T("Odśwież ikony");
         OpeningItemsTitleText.Text = LocalizationService.T("Uruchamianie elementów");
         OpeningItemsDescriptionText.Text = LocalizationService.T("Domyślnie ikony uruchamiają się pojedynczym kliknięciem.");
+        AutoStartTitleText.Text = LocalizationService.T("Uruchamianie z systemem");
+        AutoStartDescriptionText.Text = LocalizationService.T("Automatycznie uruchamia program po zalogowaniu do Windows.");
+        AutoStartCheckBox.Content = LocalizationService.T("Uruchamiaj przy starcie systemu");
         DoubleClickActivationCheckBox.Content = LocalizationService.T("Uruchamiaj dwuklikiem");
         LanguageTitleText.Text = LocalizationService.T("Język");
         LanguageDescriptionText.Text = LocalizationService.T("Język interfejsu");
@@ -1498,6 +1502,30 @@ public partial class PanelsWindow : Window
         ActivationModeChanged?.Invoke(
             this,
             new ActivationModeChangedEventArgs(DoubleClickActivationCheckBox.IsChecked == true));
+    }
+
+    private bool _isSyncingAutoStart;
+
+    /// <summary>Shows the current startup state without raising <see cref="AutoStartChanged"/>.</summary>
+    internal void SetAutoStartState(bool enabled)
+    {
+        _isSyncingAutoStart = true;
+        try
+        {
+            AutoStartCheckBox.IsChecked = enabled;
+        }
+        finally
+        {
+            _isSyncingAutoStart = false;
+        }
+    }
+
+    private void AutoStartCheckBox_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!IsLoaded || _isSyncingAutoStart)
+            return;
+
+        AutoStartChanged?.Invoke(this, AutoStartCheckBox.IsChecked == true);
     }
 
     private void LanguageComboBox_SelectionChanged(

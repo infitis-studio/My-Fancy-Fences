@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Windows;
 using System.Windows.Documents;
 using System.Windows.Media;
@@ -98,6 +98,8 @@ public sealed class LetterSpacedTextBlock : FrameworkElement
         var lines = new List<string>();
         var current = string.Empty;
         var index = 0;
+        var lineStart = 0;
+        var lastLineStart = 0;
         while (index < text.Length && lines.Count < Math.Max(1, MaxLines))
         {
             var candidate = current + text[index];
@@ -108,15 +110,28 @@ public sealed class LetterSpacedTextBlock : FrameworkElement
                 continue;
             }
 
+            // Prefer breaking at the last space, so a word that fits on the next line moves there whole
+            // instead of leaving a few of its characters at the end of this one.
+            var breakAt = current.LastIndexOf(' ');
+            if (breakAt > 0)
+            {
+                index -= current.Length - breakAt - 1;
+                current = current[..breakAt];
+            }
+
             lines.Add(current.TrimEnd());
             current = string.Empty;
+            while (index < text.Length && text[index] == ' ')
+                index++;
+            lastLineStart = lineStart;
+            lineStart = index;
         }
 
         if (lines.Count < MaxLines && current.Length > 0)
             lines.Add(current.TrimEnd());
 
         if (index < text.Length && lines.Count > 0)
-            lines[^1] = FitWithEllipsis(lines[^1] + text[index..], maxWidth);
+            lines[^1] = FitWithEllipsis(text[lastLineStart..].Trim(), maxWidth);
 
         return lines;
     }

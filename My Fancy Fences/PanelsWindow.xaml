@@ -616,7 +616,8 @@
 
                 <Grid Grid.Row="1">
                     <Grid x:Name="GeneralTabContent" Margin="4,4,4,0">
-                        <StackPanel>
+                        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel Margin="0,0,8,0">
                             <TextBlock x:Name="GeneralHeaderText" Text="Ustawienia ogólne" FontSize="18" FontWeight="SemiBold"/>
                             <TextBlock x:Name="GeneralDescriptionText" Text="Podstawowe narzędzia aplikacji"
                                        Margin="0,4,0,18" Foreground="#FFA9A2A5" FontSize="11"/>
@@ -674,6 +675,31 @@
                                         <ColumnDefinition Width="*"/>
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
+                                    <iconPacks:PackIconLucide Kind="Power" Width="20" Height="20"
+                                                              Foreground="#FFCFC7CA" VerticalAlignment="Top"/>
+                                    <StackPanel Grid.Column="1" Margin="0,0,18,0">
+                                        <TextBlock x:Name="AutoStartTitleText" Text="Uruchamianie z systemem" FontWeight="SemiBold"/>
+                                        <TextBlock x:Name="AutoStartDescriptionText" Margin="0,6,0,0" Foreground="#FFA9A2A5" FontSize="11"
+                                                   TextWrapping="Wrap"
+                                                   Text="Automatycznie uruchamia program po zalogowaniu do Windows."/>
+                                    </StackPanel>
+                                    <CheckBox x:Name="AutoStartCheckBox"
+                                              Grid.Column="2"
+                                              Content="Uruchamiaj przy starcie systemu"
+                                              Style="{StaticResource CompactCheckBoxStyle}"
+                                              VerticalAlignment="Center"
+                                              Checked="AutoStartCheckBox_Changed"
+                                              Unchecked="AutoStartCheckBox_Changed"/>
+                                </Grid>
+                            </Border>
+                            <Border Margin="0,10,0,0" Padding="16" CornerRadius="8"
+                                    Background="#FF1E1E21" BorderBrush="#FF303035" BorderThickness="1">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="38"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
                                     <iconPacks:PackIconLucide Kind="Languages" Width="20" Height="20"
                                                               Foreground="#FFCFC7CA" VerticalAlignment="Top"/>
                                     <StackPanel Grid.Column="1" Margin="0,0,18,0">
@@ -688,6 +714,7 @@
                                 </Grid>
                             </Border>
                         </StackPanel>
+                        </ScrollViewer>
                     </Grid>
 
                     <Grid x:Name="PanelsTabContent" Visibility="Collapsed">

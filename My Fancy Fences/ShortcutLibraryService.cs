@@ -25,7 +25,8 @@ public static class ShortcutLibraryService
     public static string GetIconPath(string shortcutId)
     {
         Directory.CreateDirectory(IconsDirectory);
-        return Path.Combine(IconsDirectory, $"{shortcutId}.png");
+        // ".v2" marks icons taken from the shortcut target (no arrow overlay); older cached icons are ignored.
+        return Path.Combine(IconsDirectory, $"{shortcutId}.v2.png");
     }
 
     public static string GetShortcutPath(string shortcutId)
@@ -182,6 +183,9 @@ public static class ShortcutLibraryService
 
         return inferredName;
     }
+
+    public static void RenameShortcut(string shortcutId, string newName) =>
+        SaveShortcutDisplayName(shortcutId, newName);
 
     private static string GetStableShortcutId(string sourcePath)
     {

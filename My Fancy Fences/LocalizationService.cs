@@ -276,7 +276,6 @@ public static class LocalizationService
 
         Add("Ustawienia", "Settings", "Einstellungen", "Paramètres", "Ajustes", "Impostazioni", "Configurações", "Instellingen", "Nastavení", "Налаштування", "Настройки", "设置");
         Add("Ustawienia panelu", "Panel settings", "Panel-Einstellungen", "Paramètres du panneau", "Ajustes del panel", "Impostazioni pannello", "Configurações do painel", "Paneelinstellingen", "Nastavení panelu", "Налаштування панелі", "Настройки панели", "面板设置");
-        Add("Ustawienia kreatora", "Creator settings", "Ersteller-Einstellungen", "Paramètres du créateur", "Ajustes del creador", "Impostazioni creazione", "Configurações do criador", "Makerinstellingen", "Nastavení tvůrce", "Налаштування конструктора", "Настройки конструктора", "创建器设置");
         Add("Ogólne", "General", "Allgemein", "Général", "General", "Generali", "Geral", "Algemeen", "Obecné", "Загальні", "Общие", "常规");
         Add("Panele", "Panels", "Panels", "Panneaux", "Paneles", "Pannelli", "Painéis", "Panelen", "Panely", "Панелі", "Панели", "面板");
         Add("Import / eksport", "Import / export", "Import / Export", "Import / export", "Importar / exportar", "Importa / esporta", "Importar / exportar", "Import / export", "Import / export", "Імпорт / експорт", "Импорт / экспорт", "导入 / 导出");
@@ -335,6 +334,8 @@ public static class LocalizationService
         Add("Wygląd panelu", "Panel appearance", "Aussehen des Panels", "Apparence du panneau", "Apariencia del panel", "Aspetto del pannello", "Aparência do painel", "Uiterlijk van het paneel", "Vzhled panelu", "Вигляд панелі", "Внешний вид панели", "面板外观");
         Add("Rozmycie tła (Blur)", "Background blur", "Hintergrundunschärfe (Blur)", "Flou d'arrière-plan (Blur)", "Desenfoque del fondo (Blur)", "Sfocatura sfondo (Blur)", "Desfoque do fundo (Blur)", "Achtergrond vervagen (Blur)", "Rozostření pozadí (Blur)", "Розмиття тла (Blur)", "Размытие фона (Blur)", "背景模糊 (Blur)");
         Add("Rozmywa tło znajdujące się za panelem.", "Blurs the background behind the panel.", "Weichzeichnet den Hintergrund hinter dem Panel.", "Floute l'arrière-plan situé derrière le panneau.", "Desenfoca el fondo que hay detrás del panel.", "Sfoca lo sfondo dietro il pannello.", "Desfoca o fundo atrás do painel.", "Vervaagt de achtergrond achter het paneel.", "Rozostří pozadí za panelem.", "Розмиває тло за панеллю.", "Размывает фон за панелью.", "模糊面板后面的背景。");
+        Add("Zmień nazwę", "Rename", "Umbenennen", "Renommer", "Cambiar nombre", "Rinomina", "Renomear", "Naam wijzigen", "Přejmenovat", "Перейменувати", "Переименовать", "重命名");
+        Add("Zmień nazwę panelu", "Rename panel", "Panel umbenennen", "Renommer le panneau", "Cambiar nombre del panel", "Rinomina pannello", "Renomear painel", "Paneel hernoemen", "Přejmenovat panel", "Перейменувати панель", "Переименовать панель", "重命名面板");
         Add("Przenieś na pulpit", "Move to desktop", "Auf Desktop verschieben", "Déplacer vers le bureau", "Mover al escritorio", "Sposta sul desktop", "Mover para a área de trabalho", "Naar bureaublad verplaatsen", "Přesunout na plochu", "Перемістити на робочий стіл", "Переместить на рабочий стол", "移到桌面");
         Add("Nie udało się przenieść ikony na pulpit", "Couldn't move the icon to the desktop", "Das Symbol konnte nicht auf den Desktop verschoben werden", "Impossible de déplacer l'icône vers le bureau", "No se pudo mover el icono al escritorio", "Impossibile spostare l'icona sul desktop", "Não foi possível mover o ícone para a área de trabalho", "Kan het pictogram niet naar het bureaublad verplaatsen", "Ikonu se nepodařilo přesunout na plochu", "Не вдалося перемістити значок на робочий стіл", "Не удалось переместить значок на рабочий стол", "无法将图标移到桌面");
         Add("Brak uprawnień do zapisu na pulpicie.", "You don't have permission to write to the desktop.", "Keine Berechtigung zum Schreiben auf dem Desktop.", "Vous n'avez pas l'autorisation d'écrire sur le bureau.", "No tienes permiso para escribir en el escritorio.", "Non hai il permesso di scrivere sul desktop.", "Você não tem permissão para gravar na área de trabalho.", "Je hebt geen toestemming om naar het bureaublad te schrijven.", "Nemáte oprávnění k zápisu na plochu.", "Немає дозволу на запис на робочий стіл.", "Нет разрешения на запись на рабочий стол.", "没有写入桌面的权限。");
@@ -350,8 +351,6 @@ public static class LocalizationService
         Add("Usuń panel", "Delete panel", "Panel löschen", "Supprimer le panneau", "Eliminar panel", "Elimina pannello", "Excluir painel", "Paneel verwijderen", "Odstranit panel", "Видалити панель", "Удалить панель", "删除面板");
         Add("Usuń ikonę", "Delete icon", "Symbol löschen", "Supprimer l’icône", "Eliminar icono", "Elimina icona", "Excluir ícone", "Pictogram verwijderen", "Odstranit ikonu", "Видалити значок", "Удалить значок", "删除图标");
         Add("Edytuj", "Edit", "Bearbeiten", "Modifier", "Editar", "Modifica", "Editar", "Bewerken", "Upravit", "Редагувати", "Изменить", "编辑");
-        Add("Kreator", "Creator", "Ersteller", "Créateur", "Creador", "Creazione", "Criador", "Maker", "Tvůrce", "Конструктор", "Конструктор", "创建器");
-        Add("Pokaż panel kreatora", "Show creator panel", "Ersteller-Panel anzeigen", "Afficher le panneau créateur", "Mostrar panel creador", "Mostra pannello creazione", "Mostrar painel criador", "Makerpaneel tonen", "Zobrazit panel tvůrce", "Показати панель конструктора", "Показать панель конструктора", "显示创建器面板");
         Add("Uruchamiaj przy starcie systemu", "Start with Windows", "Mit Windows starten", "Démarrer avec Windows", "Iniciar con Windows", "Avvia con Windows", "Iniciar com o Windows", "Starten met Windows", "Spouštět se systémem", "Запускати з Windows", "Запускать с Windows", "随 Windows 启动");
         Add("Nowy panel", "New panel", "Neues Panel", "Nouveau panneau", "Nuevo panel", "Nuovo pannello", "Novo painel", "Nieuw paneel", "Nový panel", "Нова панель", "Новая панель", "新建面板");
         Add("Dodaj nowy panel", "Add new panel", "Neues Panel hinzufügen", "Ajouter un panneau", "Añadir panel", "Aggiungi pannello", "Adicionar painel", "Nieuw paneel toevoegen", "Přidat nový panel", "Додати нову панель", "Добавить новую панель", "添加新面板");
@@ -404,6 +403,12 @@ public static class LocalizationService
         AddEnglishFallback("Czcionka podpisów", "Caption font");
         AddEnglishFallback("Dołącz skróty (.lnk, .url)", "Include shortcuts (.lnk, .url)");
         AddEnglishFallback("Domyślnie ikony uruchamiają się pojedynczym kliknięciem.", "By default, icons open with a single click.");
+        AddEnglishFallback("Dostępna jest nowa wersja programu.", "A new version of the app is available.");
+        AddEnglishFallback("Czy chcesz zaktualizować program z wersji {0} do {1}?", "Do you want to update the app from version {0} to {1}?");
+        AddEnglishFallback("Przypomnij później", "Remind me later");
+        AddEnglishFallback("Zobacz changelog", "View changelog");
+        AddEnglishFallback("Uruchamianie z systemem", "Run at startup");
+        AddEnglishFallback("Automatycznie uruchamia program po zalogowaniu do Windows.", "Starts the app automatically when you sign in to Windows.");
         AddEnglishFallback("Edytuj skrót", "Edit shortcut");
         AddEnglishFallback("Eksport konfiguracji", "Export configuration");
         AddEnglishFallback("Eksport konfiguracji My Fancy Fences", "Export My Fancy Fences configuration");

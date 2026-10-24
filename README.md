@@ -66,7 +66,6 @@ dotnet run --project "My Fancy Fences/My Fancy Fences.csproj"
 ## 🧭 Usage
 
 - Double-click a panel header to edit that panel.
-- Use the Creator panel to add panels or open the management window.
 - Use the management window to edit panels, browse wallpapers, change shared appearance, and import/export settings.
 - Click the empty-panel prompt or drag files/apps/shortcuts onto a panel to create shortcuts.
 - Choose single-click or double-click activation for panel items.
