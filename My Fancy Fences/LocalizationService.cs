@@ -565,6 +565,10 @@ public static class LocalizationService
         AddEnglishFallback("Typ", "Type");
         AddEnglishFallback("Ulubione", "Favorites");
         AddEnglishFallback("Wydanie nie zawiera pliku", "The release does not contain file");
+        AddEnglishFallback("Wydanie nie zawiera pliku instalatora (Setup).", "The release does not contain a Setup installer file.");
+        AddEnglishFallback("Dostępne pliki:", "Available files:");
+        AddEnglishFallback("brak", "none");
+        AddEnglishFallback("Nie udało się pobrać pliku aktualizacji.", "Could not download the update file.");
         AddEnglishFallback("Wymiary", "Dimensions");
         AddEnglishFallback("Wyświetlenia", "Views");
 

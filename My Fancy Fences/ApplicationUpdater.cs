@@ -52,15 +52,28 @@ public static class ApplicationUpdater
         CancellationToken cancellationToken = default)
     {
         var installedWithSetup = File.Exists(Path.Combine(AppContext.BaseDirectory, "installer-managed"));
-        var preferredMarker = installedWithSetup ? "-Setup-" : "WITH-NET10";
-        var asset = FindAsset(update, preferredMarker) ?? FindAsset(update, "WITH-NET10");
+        AppendLog($"Release {update.LatestTag}: {update.Assets.Count} asset(s): " +
+                  (update.Assets.Count == 0 ? "none" : string.Join(", ", update.Assets.Select(item => $"{item.Name} ({item.Size} bytes)"))));
+        AppendLog($"Installed with Setup: {installedWithSetup}. Base directory: {AppContext.BaseDirectory}");
+
+        // Releases publish only the Setup EXE. The portable WITH-NET10 package exists only in historical releases
+        // and is used as a fallback when no Setup package is available.
+        var asset = FindAsset(update, "-Setup-") ?? FindAsset(update, "WITH-NET10");
         if (asset is null)
-            throw new InvalidOperationException($"{LocalizationService.T("Wydanie nie zawiera pliku")} {preferredMarker}.");
+        {
+            var available = update.Assets.Count == 0
+                ? LocalizationService.T("brak")
+                : string.Join(", ", update.Assets.Select(item => item.Name));
+            AppendLog($"No suitable update package found in {update.LatestTag}. Available: {available}");
+            throw new InvalidOperationException(
+                $"{LocalizationService.T("Wydanie nie zawiera pliku instalatora (Setup).")} {update.LatestTag}. {LocalizationService.T("Dostępne pliki:")} {available}");
+        }
 
         var downloadUri = new Uri(asset.DownloadUrl);
         if (!downloadUri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ||
             !downloadUri.Host.Equals("github.com", StringComparison.OrdinalIgnoreCase))
         {
+            AppendLog($"Rejected download address: {downloadUri}");
             throw new InvalidOperationException(LocalizationService.T("Nieprawidłowy adres pliku aktualizacji."));
         }
 
@@ -76,11 +89,17 @@ public static class ApplicationUpdater
         AppendLog($"Preparing update {update.LatestTag}. Current executable: {currentExecutable}");
         AppendLog($"Selected asset: {asset.Name} ({asset.Size} bytes)");
 
+        AppendLog($"Downloading {downloadUri} to {downloadedExecutable}");
         using var response = await Client.GetAsync(
             downloadUri,
             HttpCompletionOption.ResponseHeadersRead,
             cancellationToken);
-        response.EnsureSuccessStatusCode();
+        if (!response.IsSuccessStatusCode)
+        {
+            AppendLog($"Download failed: HTTP {(int)response.StatusCode} {response.ReasonPhrase}");
+            throw new HttpRequestException(
+                $"{LocalizationService.T("Nie udało się pobrać pliku aktualizacji.")} HTTP {(int)response.StatusCode} {response.ReasonPhrase} ({asset.Name})");
+        }
 
         var totalBytes = response.Content.Headers.ContentLength ?? asset.Size;
         await using (var source = await response.Content.ReadAsStreamAsync(cancellationToken))
@@ -98,6 +117,7 @@ public static class ApplicationUpdater
             }
         }
 
+        AppendLog($"Download finished: {new FileInfo(downloadedExecutable).Length} bytes");
         ValidateDownloadedExecutable(downloadedExecutable, asset.Size);
         var pendingUpdate = new PendingUpdate(
             currentExecutable,
@@ -271,9 +291,13 @@ public static class ApplicationUpdater
                 Wait-Process -Id {{Environment.ProcessId}} -ErrorAction SilentlyContinue
                 $directory = [System.IO.Path]::GetDirectoryName($target)
                 $modeFile = Join-Path $directory 'installer-managed'
-                $mode = if ((Get-Content -LiteralPath $modeFile -Raw).Trim() -eq 'allusers') { '/ALLUSERS' } else { '/CURRENTUSER' }
+                function Write-UpdateLog([string]$message) { Add-Content -LiteralPath $log -Value "[$([DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss.fff'))] $message" }
+                # An unpacked build has no installer-managed marker; update it in place for the current user.
+                $mode = if ((Test-Path -LiteralPath $modeFile) -and (Get-Content -LiteralPath $modeFile -Raw).Trim() -eq 'allusers') { '/ALLUSERS' } else { '/CURRENTUSER' }
                 $arguments = '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /RESTARTEXITCODE=3010 ' + $mode + ' /DIR="' + $directory + '"'
+                Write-UpdateLog "Running installer: $installer $arguments"
                 $process = Start-Process -FilePath $installer -ArgumentList $arguments -WindowStyle Hidden -Wait -PassThru
+                Write-UpdateLog "Installer exit code: $($process.ExitCode)"
                 if ($process.ExitCode -ne 0 -and $process.ExitCode -ne 3010) {
                     throw "Installer failed with exit code $($process.ExitCode)"
                 }
@@ -282,7 +306,7 @@ public static class ApplicationUpdater
                 Remove-Item -LiteralPath $installer -Force -ErrorAction SilentlyContinue
             }
             catch {
-                Add-Content -LiteralPath $log -Value "[$([DateTime]::Now.ToString('s'))] $($_.Exception.Message)"
+                Add-Content -LiteralPath $log -Value "[$([DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss.fff'))] Update failed: $($_.Exception.Message)"
             }
             if (-not $restartRequired -and (Test-Path -LiteralPath $target)) { Start-Process -FilePath $target }
             Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue
@@ -336,7 +360,7 @@ public static class ApplicationUpdater
         }
     }
 
-    private static void AppendLog(string message)
+    internal static void AppendLog(string message)
     {
         try
         {

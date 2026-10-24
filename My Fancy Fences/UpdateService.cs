@@ -75,6 +75,10 @@ public static class UpdateService
                 CreateAsset(tag, "WITH-NET10", downloadBase)
             };
 
+            ApplicationUpdater.AppendLog(
+                $"Release check: current {FormatVersion(CurrentVersion)}, latest {tag}, {assets.Count} asset(s): " +
+                string.Join(", ", assets.Select(asset => asset.Name)));
+
             return new UpdateCheckResult(
                 true,
                 tag,
@@ -83,8 +87,9 @@ public static class UpdateService
                 latestRelease.Version > CurrentVersion,
                 assets);
         }
-        catch
+        catch (Exception exception)
         {
+            ApplicationUpdater.AppendLog($"Release check failed: {exception.Message}");
             return new UpdateCheckResult(false, string.Empty, null, null, false, []);
         }
     }

@@ -20,17 +20,16 @@ public partial class ConfirmationWindow : Window
         DialogTitleText.Text = title;
         DialogMessageText.Text = message;
         ConfirmButton.Content = confirmText;
-        Height = Math.Clamp(220 + message.Length * 0.35, 240, 340);
+        // Fit the window to the message; longer text scrolls inside the message area once MaxHeight is reached.
+        SizeToContent = SizeToContent.Height;
+        MinHeight = 190;
+        MaxHeight = 460;
         if (!string.IsNullOrWhiteSpace(cancelText))
             CancelButton.Content = cancelText;
 
         if (positiveConfirm)
         {
             Width = 440;
-            // Header (46) + footer (58) + margins (36) plus one 20px line per ~52 characters of the message.
-            MinHeight = 170;
-            var lines = Math.Max(1, message.Split('\n').Sum(line => Math.Ceiling(line.Length / 52.0)));
-            Height = Math.Clamp(146 + 20 * lines, 190, 300);
             DialogIcon.Kind = confirmText.Contains("Dodaj", StringComparison.CurrentCultureIgnoreCase)
                 ? PackIconLucideKind.Plus
                 : PackIconLucideKind.Download;
