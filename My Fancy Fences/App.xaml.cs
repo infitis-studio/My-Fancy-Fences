@@ -53,6 +53,7 @@ public partial class App : Application
         }
 
         FirstRunService.Initialize();
+        SupportReminderService.Initialize();
         WallpaperPersistenceService.RepairMissingWallpaperFromWindowsCache();
         LocalizationService.Initialize();
         EventManager.RegisterClassHandler(

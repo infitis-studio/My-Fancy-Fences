@@ -407,6 +407,10 @@ public static class LocalizationService
         AddEnglishFallback("Czy chcesz zaktualizować program z wersji {0} do {1}?", "Do you want to update the app from version {0} to {1}?");
         AddEnglishFallback("Przypomnij później", "Remind me later");
         AddEnglishFallback("Zobacz changelog", "View changelog");
+        AddEnglishFallback("Podoba Ci się My Fancy Fences?", "Enjoying My Fancy Fences?");
+        AddEnglishFallback("Tworzę ją sam i stale ulepszam. Jeśli ułatwia Ci porządek na pulpicie, możesz postawić mi wirtualną kawę – to najlepsza motywacja do dalszego rozwoju. Dziękuję!", "I build it on my own and keep improving it. If it helps keep your desktop tidy, you can buy me a virtual coffee – it is the best motivation to keep going. Thank you!");
+        AddEnglishFallback("Nie przypominaj więcej", "Don't remind me again");
+        AddEnglishFallback("Wesprzyj mnie", "Support me");
         AddEnglishFallback("Uruchamianie z systemem", "Run at startup");
         AddEnglishFallback("Automatycznie uruchamia program po zalogowaniu do Windows.", "Starts the app automatically when you sign in to Windows.");
         AddEnglishFallback("Edytuj skrót", "Edit shortcut");

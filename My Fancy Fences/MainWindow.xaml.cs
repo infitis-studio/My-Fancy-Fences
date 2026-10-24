@@ -265,7 +265,25 @@ public partial class MainWindow : Window
             if (FirstRunService.TrayPromotionPending)
                 _ = FirstRunService.EnsureTrayIconVisibleAsync();
             _ = ShowUpdateNoticeAsync();
+            _ = ShowSupportReminderAsync();
         }
+    }
+
+    /// <summary>Asks for support when it is due; waits until no other notice is on screen.</summary>
+    private async Task ShowSupportReminderAsync()
+    {
+        if (!SupportReminderService.ShouldShow())
+            return;
+
+        // The update notice appears after 10 seconds; this one follows and never covers it.
+        await Task.Delay(TimeSpan.FromSeconds(20));
+        while (IsLoaded && (_updateNoticeWindow is not null || _notificationWindow is { IsVisible: true }))
+            await Task.Delay(TimeSpan.FromSeconds(2));
+
+        if (!IsLoaded)
+            return;
+
+        new SupportReminderWindow().Show();
     }
 
     /// <summary>Announces a newer release about 10 seconds after launch, so it never interrupts the start.</summary>
