@@ -140,6 +140,7 @@ public partial class PanelsWindow : Window
         InitializeAppearanceControls();
         LanguageComboBox.ItemsSource = LocalizationService.Languages;
         LanguageComboBox.SelectedValue = LocalizationService.CurrentLanguage;
+        LiveWallpaperService.StatusChanged += LiveWallpaperService_StatusChanged;
         CurrentVersionText.Text = UpdateService.FormatVersion(UpdateService.CurrentVersion);
         UpdatePanels(panels);
         UpdateLayouts(layouts, activeLayoutId);
@@ -147,6 +148,7 @@ public partial class PanelsWindow : Window
         Closed += (_, _) =>
         {
             _panelsSmoothScrollTimer.Stop();
+            LiveWallpaperService.StatusChanged -= LiveWallpaperService_StatusChanged;
             _embeddedWallpaperWindow?.DisposeEmbedded();
             _embeddedWallpaperWindow = null;
             _layoutManageWindow?.Close();
@@ -190,6 +192,9 @@ public partial class PanelsWindow : Window
         DoubleClickActivationCheckBox.Content = LocalizationService.T("Uruchamiaj dwuklikiem");
         LanguageTitleText.Text = LocalizationService.T("Język");
         LanguageDescriptionText.Text = LocalizationService.T("Język interfejsu");
+        LiveQualityTitleText.Text = LocalizationService.T("Skalowanie live wallpaper");
+        LiveQualityDescriptionText.Text = LocalizationService.T("Wyższa rozdzielczość oznacza większe zużycie GPU, a co za tym idzie większy pobór prądu.");
+        RefreshLiveQualityItems();
 
         RefreshShortcutItems();
         _embeddedWallpaperWindow?.RefreshLocalizedText();
@@ -1503,6 +1508,45 @@ public partial class PanelsWindow : Window
             this,
             new ActivationModeChangedEventArgs(DoubleClickActivationCheckBox.IsChecked == true));
     }
+
+    private bool _isSyncingLiveQuality;
+
+    private sealed record LiveQualityItem(int Height, string Name);
+
+    private void RefreshLiveQualityItems()
+    {
+        _isSyncingLiveQuality = true;
+        try
+        {
+            LiveQualityComboBox.ItemsSource = LiveWallpaperService.QualityHeights
+                .Select(height => new LiveQualityItem(
+                    height,
+                    height == 0 ? LocalizationService.T("Oryginał (bez skalowania)") : $"{height}p"))
+                .ToList();
+            LiveQualityComboBox.SelectedValue = LiveWallpaperService.QualityHeight;
+        }
+        finally
+        {
+            _isSyncingLiveQuality = false;
+        }
+    }
+
+    private void LiveQualityComboBox_SelectionChanged(
+        object sender,
+        System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (_isSyncingLiveQuality || !IsLoaded || LiveQualityComboBox.SelectedValue is not int height)
+            return;
+
+        _ = LiveWallpaperService.SetQualityAsync(height);
+    }
+
+    private void LiveWallpaperService_StatusChanged(string status) =>
+        Dispatcher.BeginInvoke(() =>
+        {
+            LiveQualityStatusText.Text = status;
+            LiveQualityStatusText.Visibility = string.IsNullOrEmpty(status) ? Visibility.Collapsed : Visibility.Visible;
+        });
 
     private bool _isSyncingAutoStart;
 

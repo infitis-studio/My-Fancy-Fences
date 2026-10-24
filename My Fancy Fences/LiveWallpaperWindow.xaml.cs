@@ -160,6 +160,29 @@ public partial class LiveWallpaperWindow : Window
                         video.addEventListener('canplay', play, { once: true });
                         play();
                     }
+
+                    // Several monitors: draw the single decoded video onto each monitor's canvas (cover fit).
+                    const canvases = Array.from(document.querySelectorAll('canvas.monitor-video'));
+                    if (canvases.length > 0) {
+                        const video = document.querySelector('video');
+                        const contexts = canvases.map(canvas => canvas.getContext('2d', { alpha: false }));
+                        const schedule = () => video.requestVideoFrameCallback
+                            ? video.requestVideoFrameCallback(draw)
+                            : requestAnimationFrame(draw);
+                        const draw = () => {
+                            if (video.videoWidth > 0) {
+                                for (let i = 0; i < canvases.length; i++) {
+                                    const canvas = canvases[i];
+                                    const scale = Math.max(canvas.width / video.videoWidth, canvas.height / video.videoHeight);
+                                    const width = video.videoWidth * scale;
+                                    const height = video.videoHeight * scale;
+                                    contexts[i].drawImage(video, (canvas.width - width) / 2, (canvas.height - height) / 2, width, height);
+                                }
+                            }
+                            schedule();
+                        };
+                        schedule();
+                    }
                 </script>
             </body>
             </html>
@@ -174,14 +197,15 @@ public partial class LiveWallpaperWindow : Window
             return $$"""<video class="monitor-video" style="left:0;top:0;width:100%;height:100%;" src={{serializedSource}} autoplay muted loop playsinline preload="auto"></video>""";
         }
 
-        return string.Join(
-            Environment.NewLine,
-            screens.Select(screen =>
-            {
-                var left = screen.Left - virtualScreen.Left;
-                var top = screen.Top - virtualScreen.Top;
-                return $$"""<video class="monitor-video" style="left:{{left}}px;top:{{top}}px;width:{{screen.Width}}px;height:{{screen.Height}}px;" src={{serializedSource}} autoplay muted loop playsinline preload="auto"></video>""";
-            }));
+        // One video is decoded once; every monitor shows it on its own canvas (see the script below).
+        var source = $$"""<video style="position:absolute;left:0;top:0;width:1px;height:1px;opacity:0;pointer-events:none;" src={{serializedSource}} autoplay muted loop playsinline preload="auto"></video>""";
+        var canvases = screens.Select(screen =>
+        {
+            var left = screen.Left - virtualScreen.Left;
+            var top = screen.Top - virtualScreen.Top;
+            return $$"""<canvas class="monitor-video" width="{{screen.Width}}" height="{{screen.Height}}" style="left:{{left}}px;top:{{top}}px;width:{{screen.Width}}px;height:{{screen.Height}}px;"></canvas>""";
+        });
+        return source + Environment.NewLine + string.Join(Environment.NewLine, canvases);
     }
 
     private static List<NativeRect> GetMonitorBounds()

@@ -700,6 +700,31 @@
                                         <ColumnDefinition Width="*"/>
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
+                                    <iconPacks:PackIconLucide Kind="MonitorPlay" Width="20" Height="20"
+                                                              Foreground="#FFCFC7CA" VerticalAlignment="Top"/>
+                                    <StackPanel Grid.Column="1" Margin="0,0,18,0">
+                                        <TextBlock x:Name="LiveQualityTitleText" Text="Skalowanie live wallpaper" FontWeight="SemiBold"/>
+                                        <TextBlock x:Name="LiveQualityDescriptionText" Margin="0,6,0,0" Foreground="#FFA9A2A5" FontSize="11"
+                                                   TextWrapping="Wrap"
+                                                   Text="Wyższa rozdzielczość oznacza większe zużycie GPU, a co za tym idzie większy pobór prądu."/>
+                                        <TextBlock x:Name="LiveQualityStatusText" Margin="0,6,0,0" Foreground="#FF82D3A3" FontSize="11"
+                                                   TextWrapping="Wrap" Visibility="Collapsed"/>
+                                    </StackPanel>
+                                    <ComboBox x:Name="LiveQualityComboBox" Grid.Column="2"
+                                              Width="170" Style="{StaticResource LanguageComboBoxStyle}"
+                                              VerticalAlignment="Top"
+                                              DisplayMemberPath="Name" SelectedValuePath="Height"
+                                              SelectionChanged="LiveQualityComboBox_SelectionChanged"/>
+                                </Grid>
+                            </Border>
+                            <Border Margin="0,10,0,0" Padding="16" CornerRadius="8"
+                                    Background="#FF1E1E21" BorderBrush="#FF303035" BorderThickness="1">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="38"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
                                     <iconPacks:PackIconLucide Kind="Languages" Width="20" Height="20"
                                                               Foreground="#FFCFC7CA" VerticalAlignment="Top"/>
                                     <StackPanel Grid.Column="1" Margin="0,0,18,0">

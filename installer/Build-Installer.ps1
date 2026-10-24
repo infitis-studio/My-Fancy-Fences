@@ -18,7 +18,7 @@ if (Test-Path -LiteralPath $appOutput) {
     catch { throw "Cannot clean '$appOutput'. Close the application running from this folder and build again. $($_.Exception.Message)" }
 }
 if (Test-Path -LiteralPath $setupOutput) { Get-ChildItem -LiteralPath $setupOutput -Filter 'My-Fancy-Fences-v*-Setup-win-x64.exe' | Remove-Item -Force }
-& dotnet publish (Join-Path $root 'My Fancy Fences/My Fancy Fences.csproj') -c Release -r win-x64 --self-contained false -o $appOutput '-p:PublishSingleFile=false' '-p:RuntimeFrameworkVersion=10.0.0' '-p:DebugType=None' '-p:DebugSymbols=false'
+& dotnet publish (Join-Path $root 'My Fancy Fences/My Fancy Fences.csproj') -c Release -r win-x64 --self-contained false -o $appOutput '-p:PublishSingleFile=false' '-p:DebugType=None' '-p:DebugSymbols=false'
 if ($LASTEXITCODE -ne 0) { throw 'Application publishing failed.' }
 & $CompilerPath "/DAppVersion=$version" "/DPublishDir=$appOutput" "/DInstallerOutputDir=$setupOutput" (Join-Path $PSScriptRoot 'MyFancyFences.iss')
 if ($LASTEXITCODE -ne 0) { throw 'Installer compilation failed.' }

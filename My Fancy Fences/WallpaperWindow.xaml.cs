@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
 using System.Net.Http;
@@ -1188,6 +1188,7 @@ public partial class WallpaperWindow : Window
 
     private void ShowFavoriteWallpapers()
     {
+        ReloadFavoritesFromDisk();
         _loadCancellation?.Cancel();
         _loadCancellation = new CancellationTokenSource();
         _thumbnailQueue.Clear();
@@ -1262,6 +1263,8 @@ public partial class WallpaperWindow : Window
         if (string.IsNullOrWhiteSpace(wallpaper.Id))
             return;
 
+        // The details window saves favorites to the file itself; take its changes in before saving ours.
+        ReloadFavoritesFromDisk();
         if (_favoriteWallpapers.ContainsKey(wallpaper.Id))
         {
             _favoriteWallpapers.Remove(wallpaper.Id);
@@ -1280,6 +1283,12 @@ public partial class WallpaperWindow : Window
         }
 
         SaveFavorites();
+    }
+
+    private void ReloadFavoritesFromDisk()
+    {
+        _favoriteWallpapers.Clear();
+        LoadFavorites();
     }
 
     private void LoadFavorites()

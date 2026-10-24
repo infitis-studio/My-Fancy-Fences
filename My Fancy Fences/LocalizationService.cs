@@ -411,6 +411,10 @@ public static class LocalizationService
         AddEnglishFallback("Tworzę ją sam i stale ulepszam. Jeśli ułatwia Ci porządek na pulpicie, możesz postawić mi wirtualną kawę – to najlepsza motywacja do dalszego rozwoju. Dziękuję!", "I build it on my own and keep improving it. If it helps keep your desktop tidy, you can buy me a virtual coffee – it is the best motivation to keep going. Thank you!");
         AddEnglishFallback("Nie przypominaj więcej", "Don't remind me again");
         AddEnglishFallback("Wesprzyj mnie", "Support me");
+        AddEnglishFallback("Skalowanie live wallpaper", "Live wallpaper scaling");
+        AddEnglishFallback("Wyższa rozdzielczość oznacza większe zużycie GPU, a co za tym idzie większy pobór prądu.", "A higher resolution means higher GPU usage and therefore higher power consumption.");
+        AddEnglishFallback("Oryginał (bez skalowania)", "Original (no scaling)");
+        AddEnglishFallback("Przygotowywanie przeskalowanej wersji…", "Preparing the scaled version…");
         AddEnglishFallback("Uruchamianie z systemem", "Run at startup");
         AddEnglishFallback("Automatycznie uruchamia program po zalogowaniu do Windows.", "Starts the app automatically when you sign in to Windows.");
         AddEnglishFallback("Edytuj skrót", "Edit shortcut");
