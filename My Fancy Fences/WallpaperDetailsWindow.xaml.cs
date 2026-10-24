@@ -132,8 +132,12 @@ public partial class WallpaperDetailsWindow : Window
     {
         if (_wallpaper.Id.StartsWith("moewalls:", StringComparison.OrdinalIgnoreCase))
         {
+            // Live wallpapers have no tags to show: hide the whole section.
             TagsItemsControl.ItemsSource = Array.Empty<string>();
-            TagsLoadingText.Text = LocalizationService.T("Szczegóły dla MoeWalls są w trakcie tworzenia.");
+            TagsSeparator.Visibility = Visibility.Collapsed;
+            TagsHeaderText.Visibility = Visibility.Collapsed;
+            TagsLoadingText.Visibility = Visibility.Collapsed;
+            TagsItemsControl.Visibility = Visibility.Collapsed;
             StopLoadingAnimation();
             return;
         }

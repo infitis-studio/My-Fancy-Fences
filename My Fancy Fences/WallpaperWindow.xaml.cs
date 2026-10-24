@@ -1199,7 +1199,11 @@ public partial class WallpaperWindow : Window
         _wallpapers.Clear();
         _loadedWallpaperIds.Clear();
 
-        foreach (var favorite in _favoriteWallpapers.Values.OrderByDescending(item => item.AddedAt))
+        // Favorites are split by source: live wallpapers (MoeWalls) and regular ones (Wallhaven).
+        var showMoeWalls = IsMoeWallsSelected;
+        foreach (var favorite in _favoriteWallpapers.Values
+                     .Where(item => IsMoeWallsFavorite(item) == showMoeWalls)
+                     .OrderByDescending(item => item.AddedAt))
         {
             var wallpaper = new WallpaperCard(
                 favorite.Id,
@@ -1225,6 +1229,10 @@ public partial class WallpaperWindow : Window
         WallpapersScrollViewer.ScrollToTop();
         RefreshFavoritesStatus();
     }
+
+    // Saved favorites carry no source field; the page address tells where the wallpaper comes from.
+    private static bool IsMoeWallsFavorite(FavoriteWallpaper favorite) =>
+        favorite.PageUrl.Contains("motionbgs.com", StringComparison.OrdinalIgnoreCase);
 
     private void RefreshFavoritesStatus()
     {

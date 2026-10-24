@@ -457,7 +457,6 @@ public static class LocalizationService
         AddEnglishFallback("Skróty tworzone są automatycznie dla każdego układu paneli.", "Shortcuts are created automatically for each panel layout.");
         AddEnglishFallback("Sortowanie", "Sorting");
         AddEnglishFallback("Sprawdź dostępność nowej wersji na GitHubie", "Check for a new version on GitHub");
-        AddEnglishFallback("Szczegóły dla MoeWalls są w trakcie tworzenia.", "MoeWalls details are in progress.");
         AddEnglishFallback("Tapety z MoeWalls", "MoeWalls wallpapers");
         AddEnglishFallback("Tapety z Wallhaven", "Wallhaven wallpapers");
         AddEnglishFallback("Toplist", "Toplist");
@@ -466,7 +465,6 @@ public static class LocalizationService
         AddEnglishFallback("v0.1.0", "v0.1.0");
         AddEnglishFallback("W tej zakładce zmieniasz wygląd wszystkich paneli jednocześnie. Aby edytować tylko konkretny panel, kliknij dwukrotnie jego nagłówek lub górę panelu, jeśli nagłówek jest ukryty.", "This tab changes the appearance of all panels at once. To edit only one panel, double-click its header or the top of the panel if the header is hidden.");
         AddEnglishFallback("Wciśnij kombinację klawiszy", "Press a key combination");
-        AddEnglishFallback("W trakcie tworzenia", "In progress");
         AddEnglishFallback("White", "White");
         AddEnglishFallback("Wpisz tagi...", "Type tags...");
         AddEnglishFallback("Wybrane źródło", "Selected source");
